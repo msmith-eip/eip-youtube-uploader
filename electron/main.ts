@@ -413,8 +413,9 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
             },
             status: {
               privacyStatus: job.privacy || 'unlisted',
-              selfDeclaredMadeForKids: false,
-              containsSyntheticMedia: true,
+              // Per-job values from spreadsheet; defaults: not made for kids, contains synthetic media
+              selfDeclaredMadeForKids: job.selfDeclaredMadeForKids ?? false,
+              containsSyntheticMedia: job.containsSyntheticMedia ?? true,
             } as any,
           },
           media: {
@@ -545,8 +546,9 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
           },
           status: {
             privacyStatus: job.privacy || 'unlisted',
-            selfDeclaredMadeForKids: false,
-            containsSyntheticMedia: true,
+            // Per-job values from spreadsheet; defaults: not made for kids, contains synthetic media
+            selfDeclaredMadeForKids: job.selfDeclaredMadeForKids ?? false,
+            containsSyntheticMedia: job.containsSyntheticMedia ?? true,
           } as any,
         },
         media: { mimeType: 'video/mp4', body: fileStream },

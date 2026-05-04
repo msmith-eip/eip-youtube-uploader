@@ -61,6 +61,16 @@ export function parseExcelFile(base64Data: string, videoFolder?: string): Upload
     return ''
   }
 
+  // Parse a boolean-ish cell value — accepts YES/NO/TRUE/FALSE/1/0
+  const parseBool = (row: any, ...names: string[]): boolean | undefined => {
+    const raw = col(row, ...names)
+    if (!raw) return undefined
+    const v = raw.toLowerCase()
+    if (v === 'yes' || v === 'true' || v === '1') return true
+    if (v === 'no' || v === 'false' || v === '0') return false
+    return undefined
+  }
+
   return rows
     .filter(row => col(row, 'filename', 'file_name', 'video_filename'))
     .map(row => {
@@ -72,7 +82,7 @@ export function parseExcelFile(base64Data: string, videoFolder?: string): Upload
       const channelRaw = col(row, 'channel', 'channel_name', 'youtube_channel')
       const channelId = col(row, 'channel_id', 'channelid', 'youtube_channel_id')
       const categoryId = col(row, 'category_id', 'categoryid', 'category') || '22'
-      // FILE_PATH column (col I) — full path to the video file on disk
+      // FILE_PATH column — full path to the video file on disk
       const filePathCol = col(row, 'file_path', 'filepath', 'video_path', 'full_path', 'path')
       let filePath: string
       if (filePathCol) {
@@ -83,6 +93,9 @@ export function parseExcelFile(base64Data: string, videoFolder?: string): Upload
       } else {
         filePath = filename
       }
+      // New optional columns — default to safe values when absent
+      const madeForKidsRaw = parseBool(row, 'made_for_kids', 'madeForKids', 'made for kids', 'kids')
+      const syntheticMediaRaw = parseBool(row, 'contains_synthetic_media', 'containsSyntheticMedia', 'synthetic_media', 'synthetic media', 'ai content')
       return {
         id: uuidv4(),
         filePath,
@@ -95,6 +108,9 @@ export function parseExcelFile(base64Data: string, videoFolder?: string): Upload
         channelId: channelId || '',
         channelName: channelRaw || channelId || '',
         categoryId: categoryId || '22',
+        // Default: NOT made for kids, YES contains synthetic/AI media
+        selfDeclaredMadeForKids: madeForKidsRaw ?? false,
+        containsSyntheticMedia: syntheticMediaRaw ?? true,
         status: 'pending' as const,
         progress: 0,
         bytesUploaded: 0,
@@ -102,6 +118,7 @@ export function parseExcelFile(base64Data: string, videoFolder?: string): Upload
       }
     })
 }
+
 function normalizePrivacy(value: string): PrivacyStatus {
   const v = value.toLowerCase().trim()
   if (v === 'public') return 'public'
@@ -114,55 +131,78 @@ export function generateExcelTemplate(): ArrayBuffer {
   const workbook = XLSX.utils.book_new()
 
   // ── Main Upload Sheet ──────────────────────────────────────────────────────
+  // Column headers are ALL CAPS
   const uploadHeaders = [
-    'filename', 'title', 'description', 'tags', 'privacy', 'channel', 'channel_id', 'category_id'
+    'FILENAME', 'TITLE', 'DESCRIPTION', 'TAGS', 'PRIVACY', 'CHANNEL', 'CHANNEL_ID',
+    'CATEGORY_ID', 'MADE_FOR_KIDS', 'CONTAINS_SYNTHETIC_MEDIA',
   ]
 
   const exampleRows = [
     {
-      filename: 'florida_medicare_16x9.mp4',
-      title: 'Medicare Advantage Plans in Florida 2025',
-      description: 'Learn about Medicare Advantage options available in Florida for 2025. Compare plans, benefits, and costs.',
-      tags: 'medicare,florida,insurance,medicare advantage,2025',
-      privacy: 'unlisted',
-      channel: '@MedicareCompared',
-      channel_id: '',
-      category_id: '22',
+      FILENAME: 'florida_medicare_16x9.mp4',
+      TITLE: 'Medicare Advantage Plans in Florida 2025',
+      DESCRIPTION: 'Learn about Medicare Advantage options available in Florida for 2025. Compare plans, benefits, and costs.',
+      TAGS: 'medicare,florida,insurance,medicare advantage,2025',
+      PRIVACY: 'unlisted',
+      CHANNEL: '@MedicareCompared',
+      CHANNEL_ID: '',
+      CATEGORY_ID: '22',
+      MADE_FOR_KIDS: 'NO',
+      CONTAINS_SYNTHETIC_MEDIA: 'YES',
     },
     {
-      filename: 'texas_medicare_9x16.mp4',
-      title: 'Texas Medicare Supplement Plans 2025',
-      description: 'Discover the best Medicare Supplement plans in Texas. Get expert guidance from Elite Insurance Partners.',
-      tags: 'medicare,texas,insurance,medicare supplement,medigap',
-      privacy: 'unlisted',
-      channel: '@eliteinsurancepartners',
-      channel_id: '',
-      category_id: '22',
+      FILENAME: 'texas_medicare_9x16.mp4',
+      TITLE: 'Texas Medicare Supplement Plans 2025',
+      DESCRIPTION: 'Discover the best Medicare Supplement plans in Texas. Get expert guidance from Elite Insurance Partners.',
+      TAGS: 'medicare,texas,insurance,medicare supplement,medigap',
+      PRIVACY: 'unlisted',
+      CHANNEL: '@eliteinsurancepartners',
+      CHANNEL_ID: '',
+      CATEGORY_ID: '22',
+      MADE_FOR_KIDS: 'NO',
+      CONTAINS_SYNTHETIC_MEDIA: 'YES',
     },
     {
-      filename: 'california_health_1x1.mp4',
-      title: 'Health Insurance Options in California',
-      description: 'Explore health insurance options for California residents. Compare plans and find the best coverage.',
-      tags: 'health insurance,california,coverage,plans',
-      privacy: 'unlisted',
-      channel: '@HealthCompared',
-      channel_id: '',
-      category_id: '22',
+      FILENAME: 'california_health_1x1.mp4',
+      TITLE: 'Health Insurance Options in California',
+      DESCRIPTION: 'Explore health insurance options for California residents. Compare plans and find the best coverage.',
+      TAGS: 'health insurance,california,coverage,plans',
+      PRIVACY: 'unlisted',
+      CHANNEL: '@HealthCompared',
+      CHANNEL_ID: '',
+      CATEGORY_ID: '22',
+      MADE_FOR_KIDS: 'NO',
+      CONTAINS_SYNTHETIC_MEDIA: 'YES',
     },
   ]
 
   const uploadSheet = XLSX.utils.json_to_sheet(exampleRows, { header: uploadHeaders })
 
-  // Style column widths
+  // ── Bold header row (row 1) ────────────────────────────────────────────────
+  uploadHeaders.forEach((_, colIdx) => {
+    const cellAddr = XLSX.utils.encode_cell({ r: 0, c: colIdx })
+    if (!uploadSheet[cellAddr]) return
+    uploadSheet[cellAddr].s = {
+      font: { bold: true, sz: 11 },
+      alignment: { horizontal: 'center', vertical: 'center' },
+    }
+  })
+
+  // ── Freeze the first row ───────────────────────────────────────────────────
+  uploadSheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft' }
+
+  // ── Column widths ──────────────────────────────────────────────────────────
   uploadSheet['!cols'] = [
-    { wch: 35 }, // filename
-    { wch: 50 }, // title
-    { wch: 80 }, // description
-    { wch: 60 }, // tags
-    { wch: 12 }, // privacy
-    { wch: 30 }, // channel
-    { wch: 30 }, // channel_id
-    { wch: 15 }, // category_id
+    { wch: 35 }, // FILENAME
+    { wch: 50 }, // TITLE
+    { wch: 80 }, // DESCRIPTION
+    { wch: 60 }, // TAGS
+    { wch: 12 }, // PRIVACY
+    { wch: 30 }, // CHANNEL
+    { wch: 30 }, // CHANNEL_ID
+    { wch: 15 }, // CATEGORY_ID
+    { wch: 18 }, // MADE_FOR_KIDS
+    { wch: 28 }, // CONTAINS_SYNTHETIC_MEDIA
   ]
 
   XLSX.utils.book_append_sheet(workbook, uploadSheet, 'Upload Queue')
@@ -171,7 +211,7 @@ export function generateExcelTemplate(): ArrayBuffer {
   const channelsData = EIP_CHANNELS.map(c => ({
     'Channel Handle': c.handle,
     'Channel Name': c.name,
-    'Use in "channel" column': c.handle,
+    'Use in "CHANNEL" column': c.handle,
   }))
   const channelsSheet = XLSX.utils.json_to_sheet(channelsData)
   channelsSheet['!cols'] = [{ wch: 30 }, { wch: 35 }, { wch: 30 }]
@@ -199,20 +239,22 @@ export function generateExcelTemplate(): ArrayBuffer {
 
   // ── Instructions Sheet ─────────────────────────────────────────────────────
   const instructionsData = [
-    { 'Column': 'filename', 'Required': 'YES', 'Description': 'Exact filename of the video file (e.g., florida_16x9.mp4)' },
-    { 'Column': 'title', 'Required': 'YES', 'Description': 'YouTube video title (max 100 characters)' },
-    { 'Column': 'description', 'Required': 'NO', 'Description': 'Video description (max 5000 characters)' },
-    { 'Column': 'tags', 'Required': 'NO', 'Description': 'Comma-separated tags (e.g., medicare,florida,insurance)' },
-    { 'Column': 'privacy', 'Required': 'NO', 'Description': 'Privacy status: unlisted (default), private, or public' },
-    { 'Column': 'channel', 'Required': 'YES', 'Description': 'Channel handle from EIP Channels sheet (e.g., @MedicareCompared)' },
-    { 'Column': 'channel_id', 'Required': 'NO', 'Description': 'YouTube Channel ID (auto-filled when you connect your account)' },
-    { 'Column': 'category_id', 'Required': 'NO', 'Description': 'YouTube category ID (default: 22 = People & Blogs)' },
+    { 'COLUMN': 'FILENAME', 'REQUIRED': 'YES', 'DESCRIPTION': 'Exact filename of the video file (e.g., florida_16x9.mp4)' },
+    { 'COLUMN': 'TITLE', 'REQUIRED': 'YES', 'DESCRIPTION': 'YouTube video title (max 100 characters)' },
+    { 'COLUMN': 'DESCRIPTION', 'REQUIRED': 'NO', 'DESCRIPTION': 'Video description (max 5000 characters)' },
+    { 'COLUMN': 'TAGS', 'REQUIRED': 'NO', 'DESCRIPTION': 'Comma-separated tags (e.g., medicare,florida,insurance)' },
+    { 'COLUMN': 'PRIVACY', 'REQUIRED': 'NO', 'DESCRIPTION': 'Privacy status: unlisted (default), private, or public' },
+    { 'COLUMN': 'CHANNEL', 'REQUIRED': 'YES', 'DESCRIPTION': 'Channel handle from EIP Channels sheet (e.g., @MedicareCompared)' },
+    { 'COLUMN': 'CHANNEL_ID', 'REQUIRED': 'NO', 'DESCRIPTION': 'YouTube Channel ID (auto-filled when you connect your account)' },
+    { 'COLUMN': 'CATEGORY_ID', 'REQUIRED': 'NO', 'DESCRIPTION': 'YouTube category ID (default: 22 = People & Blogs)' },
+    { 'COLUMN': 'MADE_FOR_KIDS', 'REQUIRED': 'NO', 'DESCRIPTION': 'YES or NO — is this video made for children? Default: NO' },
+    { 'COLUMN': 'CONTAINS_SYNTHETIC_MEDIA', 'REQUIRED': 'NO', 'DESCRIPTION': 'YES or NO — does this video contain AI-generated or altered content? Default: YES' },
   ]
   const instructionsSheet = XLSX.utils.json_to_sheet(instructionsData)
-  instructionsSheet['!cols'] = [{ wch: 15 }, { wch: 12 }, { wch: 70 }]
+  instructionsSheet['!cols'] = [{ wch: 28 }, { wch: 12 }, { wch: 80 }]
   XLSX.utils.book_append_sheet(workbook, instructionsSheet, 'Instructions')
 
-  return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
+  return XLSX.write(workbook, { type: 'array', bookType: 'xlsx', cellStyles: true })
 }
 
 // ─── Export Jobs to Excel ─────────────────────────────────────────────────────
@@ -220,24 +262,27 @@ export function exportJobsToExcel(jobs: UploadJob[]): ArrayBuffer {
   const workbook = XLSX.utils.book_new()
 
   const rows = jobs.map(job => ({
-    filename: job.fileName,
-    title: job.title,
-    description: job.description,
-    tags: job.tags,
-    privacy: job.privacy,
-    channel: job.channelName,
-    channel_id: job.channelId,
-    category_id: job.categoryId,
-    status: job.status,
-    video_id: job.videoId || '',
-    youtube_url: job.youtubeUrl || '',
-    error: job.error || '',
+    FILENAME: job.fileName,
+    TITLE: job.title,
+    DESCRIPTION: job.description,
+    TAGS: job.tags,
+    PRIVACY: job.privacy,
+    CHANNEL: job.channelName,
+    CHANNEL_ID: job.channelId,
+    CATEGORY_ID: job.categoryId,
+    MADE_FOR_KIDS: (job as any).selfDeclaredMadeForKids === true ? 'YES' : 'NO',
+    CONTAINS_SYNTHETIC_MEDIA: (job as any).containsSyntheticMedia === false ? 'NO' : 'YES',
+    STATUS: job.status,
+    VIDEO_ID: job.videoId || '',
+    YOUTUBE_URL: job.youtubeUrl || '',
+    ERROR: job.error || '',
   }))
 
   const sheet = XLSX.utils.json_to_sheet(rows)
   sheet['!cols'] = [
     { wch: 35 }, { wch: 50 }, { wch: 80 }, { wch: 60 },
     { wch: 12 }, { wch: 30 }, { wch: 30 }, { wch: 15 },
+    { wch: 18 }, { wch: 28 },
     { wch: 12 }, { wch: 25 }, { wch: 45 }, { wch: 40 },
   ]
   XLSX.utils.book_append_sheet(workbook, sheet, 'Upload Results')
@@ -305,11 +350,11 @@ export function writeBackToExcel(
     return idx
   }
 
-  const statusCol    = getOrAddCol('UPLOAD_STATUS')
-  const urlCol       = getOrAddCol('YOUTUBE_URL')
-  const videoIdCol   = getOrAddCol('VIDEO_ID')
+  const statusCol     = getOrAddCol('UPLOAD_STATUS')
+  const urlCol        = getOrAddCol('YOUTUBE_URL')
+  const videoIdCol    = getOrAddCol('VIDEO_ID')
   const uploadedAtCol = getOrAddCol('UPLOADED_AT')
-  const errorCol     = getOrAddCol('UPLOAD_ERROR')
+  const errorCol      = getOrAddCol('UPLOAD_ERROR')
 
   // Find the filename / file_path column to match rows
   const filenameColIdx = headerRow.findIndex(h =>
