@@ -41,6 +41,8 @@ export interface UploadHistory {
   uploadedAt: string
   filePath: string
   youtubeUrl: string
+  status?: 'success' | 'failed'
+  error?: string
 }
 
 export interface AppSettings {

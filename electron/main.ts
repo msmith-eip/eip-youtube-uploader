@@ -376,6 +376,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
         uploadedAt: new Date().toISOString(),
         filePath: job.filePath,
         youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        status: 'success',
       }
       history.unshift(historyEntry)
       store.set('uploadHistory', history.slice(0, 1000))
@@ -405,11 +406,26 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
         await attemptUpload(2)
       } catch (err2: any) {
         // Both attempts failed - mark as error with retry button
+        const errMsg = err2.message || 'Upload failed after retry'
         mainWindow?.webContents.send('upload:job-error', {
           index: i,
-          error: err2.message || 'Upload failed after retry',
+          error: errMsg,
           canRetry: true,
         })
+        // Save failed upload to history
+        const failedEntry = {
+          id: `failed-${Date.now()}-${i}`,
+          title: job.title || job.fileName,
+          channel: job.channelName || job.channelId,
+          privacy: job.privacy,
+          uploadedAt: new Date().toISOString(),
+          filePath: job.filePath,
+          youtubeUrl: '',
+          status: 'failed',
+          error: errMsg,
+        }
+        history.unshift(failedEntry)
+        store.set('uploadHistory', history.slice(0, 1000))
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
     }
