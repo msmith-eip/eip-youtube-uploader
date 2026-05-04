@@ -82,7 +82,9 @@
   }
 
   .progress-fill {
-    @apply h-full bg-gradient-to-r from-brand-600 to-accent-purple rounded-full transition-all duration-300;
+    @apply h-full bg-gradient-to-r from-brand-600 to-accent-purple rounded-full;
+    transform-origin: left center;
+    min-width: 0;
   }
 
   .nav-item {

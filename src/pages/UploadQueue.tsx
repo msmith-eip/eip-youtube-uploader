@@ -714,6 +714,23 @@ export default function UploadQueue() {
                       await (window.electronAPI.upload as any).retryJob({ ...job, _queueIndex: queueIndex })
                     }
                   }}
+                  onBrowseFile={async () => {
+                    if (!window.electronAPI) return
+                    const result = await window.electronAPI.dialog.openVideos()
+                    if (result.canceled || !result.filePaths.length) return
+                    const newPath = result.filePaths[0]
+                    const info = await window.electronAPI.fs.getFileInfo(newPath)
+                    setUploadJobs(prev => prev.map(j => j.id === job.id ? {
+                      ...j,
+                      filePath: newPath,
+                      fileName: info.name || newPath.split(/[\/]/).pop() || newPath,
+                      fileSize: info.size || j.fileSize,
+                      status: 'pending',
+                      error: undefined,
+                      canRetry: false,
+                      progress: 0,
+                    } : j))
+                  }}
                   onEdit={() => startEdit(job)}
                   onSave={() => saveEdit(job.id)}
                   onCancelEdit={cancelEdit}
@@ -741,6 +758,7 @@ interface JobRowProps {
   onSelect: (checked: boolean) => void
   onExpand: () => void
   onRetry?: () => void
+  onBrowseFile?: () => void
   onEdit: () => void
   onSave: () => void
   onCancelEdit: () => void
@@ -902,8 +920,10 @@ function JobRow({
               <div className="progress-bar">
                 <motion.div
                   className="progress-fill"
+                  initial={{ width: 0 }}
                   animate={{ width: `${job.progress}%` }}
-                  transition={{ duration: 0.3 }}
+                  transition={{ duration: 0.3, ease: 'linear' }}
+                  style={{ transformOrigin: 'left center' }}
                 />
               </div>
             </div>
@@ -922,15 +942,24 @@ function JobRow({
           {job.status === 'error' && (
             <div className="flex flex-col gap-1">
               <span className="text-[10px] text-accent-red font-medium">Failed</span>
-              {job.canRetry && (
+              <div className="flex flex-col gap-0.5">
+                {job.canRetry && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onRetry?.() }}
+                    className="px-2 py-0.5 rounded text-[10px] bg-accent-red/20 hover:bg-accent-red/40 text-accent-red border border-accent-red/30 transition-colors font-medium w-fit"
+                    title="Retry upload"
+                  >
+                    Retry
+                  </button>
+                )}
                 <button
-                  onClick={(e) => { e.stopPropagation(); onRetry?.() }}
-                  className="px-2 py-0.5 rounded text-[10px] bg-accent-red/20 hover:bg-accent-red/40 text-accent-red border border-accent-red/30 transition-colors font-medium w-fit"
-                  title="Retry upload"
+                  onClick={(e) => { e.stopPropagation(); onBrowseFile?.() }}
+                  className="px-2 py-0.5 rounded text-[10px] bg-dark-700 hover:bg-dark-600 text-dark-300 hover:text-dark-100 border border-dark-600 transition-colors font-medium w-fit"
+                  title="Locate video file"
                 >
-                  Retry
+                  Browse...
                 </button>
-              )}
+              </div>
             </div>
           )}
           {job.status === 'pending' && (
