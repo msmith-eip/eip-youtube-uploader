@@ -413,7 +413,9 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
             },
             status: {
               privacyStatus: job.privacy || 'unlisted',
-            },
+              selfDeclaredMadeForKids: false,
+              containsSyntheticMedia: true,
+            } as any,
           },
           media: {
             mimeType: 'video/mp4',
@@ -541,7 +543,11 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
             categoryId: job.categoryId || '22',
             channelId: job.channelId || undefined,
           },
-          status: { privacyStatus: job.privacy || 'unlisted' },
+          status: {
+            privacyStatus: job.privacy || 'unlisted',
+            selfDeclaredMadeForKids: false,
+            containsSyntheticMedia: true,
+          } as any,
         },
         media: { mimeType: 'video/mp4', body: fileStream },
       },
