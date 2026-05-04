@@ -11,7 +11,7 @@ import { useApp } from '../App'
 import type { UploadJob, PrivacyStatus } from '../types'
 import { parseExcelFile, generateExcelTemplate, exportJobsToExcel, writeBackToExcel, formatFileSize, EIP_CHANNELS, YOUTUBE_CATEGORIES } from '../utils/excelParser'
 
-type FilterStatus = 'all' | 'pending' | 'uploading' | 'complete' | 'error'
+type FilterStatus = 'all' | 'pending' | 'uploading' | 'complete' | 'error' | 'syncing'
 
 export default function UploadQueue() {
   const { auth, channels, uploadJobs, setUploadJobs, isUploading, setIsUploading, settings } = useApp()
@@ -68,6 +68,11 @@ export default function UploadQueue() {
     ;(window.electronAPI.upload as any).onJobRetrying?.(({ index, attempt, error }: any) => {
       setUploadJobs(prev => prev.map((job, i) =>
         i === index ? { ...job, status: 'retrying', error: `Retrying... (attempt ${attempt}: ${error})` } : job
+      ))
+    })
+    ;(window.electronAPI.upload as any).onJobSyncing?.(({ index, message }: any) => {
+      setUploadJobs(prev => prev.map((job, i) =>
+        i === index ? { ...job, status: 'syncing', error: message } : job
       ))
     })
 
@@ -405,7 +410,11 @@ export default function UploadQueue() {
 
   // ── Filtering ────────────────────────────────────────────────────────────────
   const filteredJobs = uploadJobs.filter(job => {
-    if (filterStatus !== 'all' && job.status !== filterStatus) return false
+    if (filterStatus !== 'all') {
+      // 'syncing' and 'retrying' are sub-states of uploading — show them under the uploading filter
+      const effectiveStatus = (job.status === 'syncing' || job.status === 'retrying') ? 'uploading' : job.status
+      if (effectiveStatus !== filterStatus) return false
+    }
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
       return (
@@ -421,9 +430,10 @@ export default function UploadQueue() {
   const stats = {
     total: uploadJobs.length,
     pending: uploadJobs.filter(j => j.status === 'pending').length,
-    uploading: uploadJobs.filter(j => j.status === 'uploading').length,
+    uploading: uploadJobs.filter(j => j.status === 'uploading' || j.status === 'syncing').length,
     complete: uploadJobs.filter(j => j.status === 'complete').length,
     error: uploadJobs.filter(j => j.status === 'error').length,
+    syncing: uploadJobs.filter(j => j.status === 'syncing').length,
   }
 
   const overallProgress = stats.total > 0
@@ -822,6 +832,7 @@ function JobRow({
   const statusColors = {
     pending: 'text-dark-400',
     uploading: 'text-brand-400',
+    syncing: 'text-yellow-400',
     complete: 'text-accent-green',
     error: 'text-accent-red',
     cancelled: 'text-dark-500',
@@ -849,6 +860,8 @@ function JobRow({
           ? 'border-accent-green/15 bg-dark-800'
           : job.status === 'uploading'
           ? 'border-brand-500/30 bg-dark-800'
+          : job.status === 'syncing'
+          ? 'border-yellow-500/30 bg-dark-800'
           : 'border-dark-700 bg-dark-800 hover:border-dark-600'
       }`}
     >
@@ -860,7 +873,7 @@ function JobRow({
           checked={isSelected}
           onChange={e => onSelect(e.target.checked)}
           className="w-3.5 h-3.5 accent-brand-500 flex-shrink-0"
-          disabled={job.status === 'uploading'}
+          disabled={job.status === 'uploading' || job.status === 'syncing'}
         />
 
         {/* Status Icon */}
@@ -872,6 +885,14 @@ function JobRow({
               transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
             >
               <Loader2 size={14} className="text-brand-400" />
+            </motion.div>
+          )}
+          {job.status === 'syncing' && (
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+            >
+              <RefreshCw size={14} className="text-yellow-400" />
             </motion.div>
           )}
           {job.status === 'complete' && <CheckCircle size={14} className="text-accent-green" />}
@@ -988,6 +1009,15 @@ function JobRow({
               </div>
             </div>
           )}
+          {job.status === 'syncing' && (
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse flex-shrink-0" />
+                <span className="text-[10px] text-yellow-400 font-medium">Syncing...</span>
+              </div>
+              <span className="text-[9px] text-yellow-500/70 leading-tight">OneDrive</span>
+            </div>
+          )}
           {job.status === 'error' && (
             <div className="flex flex-col gap-1">
               <span className="text-[10px] text-accent-red font-medium">Failed</span>
@@ -1053,7 +1083,7 @@ function JobRow({
               >
                 {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
               </button>
-              {job.status !== 'uploading' && (
+              {job.status !== 'uploading' && job.status !== 'syncing' && (
                 <button
                   onClick={onRemove}
                   className="p-1.5 rounded-lg hover:bg-accent-red/15 text-dark-500 hover:text-accent-red transition-colors"
