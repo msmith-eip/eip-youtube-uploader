@@ -263,3 +263,113 @@ export function formatDuration(seconds: number): string {
   if (m > 0) return `${m}m ${s}s`
   return `${s}s`
 }
+
+// ─── Write Back Upload Results to Original Excel ──────────────────────────────
+export interface WriteBackResult {
+  filename: string
+  status: 'complete' | 'error' | 'pending'
+  videoId?: string
+  youtubeUrl?: string
+  error?: string
+  uploadedAt?: string
+}
+
+export function writeBackToExcel(
+  originalBase64: string,
+  results: WriteBackResult[]
+): ArrayBuffer {
+  // Decode original workbook
+  const binaryStr = atob(originalBase64)
+  const bytes = new Uint8Array(binaryStr.length)
+  for (let i = 0; i < binaryStr.length; i++) {
+    bytes[i] = binaryStr.charCodeAt(i)
+  }
+  const workbook = XLSX.read(bytes, { type: 'array' })
+  const sheetName = workbook.SheetNames[0]
+  const sheet = workbook.Sheets[sheetName]
+
+  // Get all rows as array-of-arrays to preserve exact structure
+  const aoa: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' })
+  if (aoa.length === 0) return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
+
+  // Find or add status columns at the end of the header row
+  const headerRow: string[] = aoa[0].map((h: any) => String(h).trim().toUpperCase())
+
+  const getOrAddCol = (name: string): number => {
+    let idx = headerRow.findIndex(h => h === name)
+    if (idx === -1) {
+      idx = headerRow.length
+      headerRow.push(name)
+      aoa[0] = [...headerRow]
+    }
+    return idx
+  }
+
+  const statusCol    = getOrAddCol('UPLOAD_STATUS')
+  const urlCol       = getOrAddCol('YOUTUBE_URL')
+  const videoIdCol   = getOrAddCol('VIDEO_ID')
+  const uploadedAtCol = getOrAddCol('UPLOADED_AT')
+  const errorCol     = getOrAddCol('UPLOAD_ERROR')
+
+  // Find the filename / file_path column to match rows
+  const filenameColIdx = headerRow.findIndex(h =>
+    h === 'FILENAME' || h === 'FILE_NAME' || h === 'FILE_PATH' || h === 'FILEPATH'
+  )
+
+  // Build lookup map: basename → result (case-insensitive)
+  const resultMap = new Map<string, WriteBackResult>()
+  for (const r of results) {
+    const basename = r.filename.split(/[\\/]/).pop()?.toLowerCase() || r.filename.toLowerCase()
+    resultMap.set(basename, r)
+    resultMap.set(r.filename.toLowerCase(), r)
+  }
+
+  // Update each data row
+  for (let rowIdx = 1; rowIdx < aoa.length; rowIdx++) {
+    const row = aoa[rowIdx]
+    // Ensure row is long enough
+    const maxCol = Math.max(statusCol, urlCol, videoIdCol, uploadedAtCol, errorCol)
+    while (row.length <= maxCol) row.push('')
+
+    let rowFile = ''
+    if (filenameColIdx >= 0 && row[filenameColIdx]) {
+      rowFile = String(row[filenameColIdx]).trim().toLowerCase()
+    }
+    const rowBasename = rowFile.split(/[\\/]/).pop() || rowFile
+
+    const result = resultMap.get(rowBasename) || resultMap.get(rowFile)
+    if (!result) continue
+
+    const ts = result.uploadedAt || new Date().toISOString()
+    if (result.status === 'complete') {
+      row[statusCol]     = 'Uploaded ✓'
+      row[urlCol]        = result.youtubeUrl || ''
+      row[videoIdCol]    = result.videoId || ''
+      row[uploadedAtCol] = ts
+      row[errorCol]      = ''
+    } else if (result.status === 'error') {
+      row[statusCol]     = 'Failed ✗'
+      row[urlCol]        = ''
+      row[videoIdCol]    = ''
+      row[uploadedAtCol] = ts
+      row[errorCol]      = result.error || 'Unknown error'
+    }
+  }
+
+  // Write updated data back to the sheet
+  const newSheet = XLSX.utils.aoa_to_sheet(aoa)
+
+  // Set column widths
+  const colWidths: any[] = newSheet['!cols'] || []
+  const maxCol = Math.max(statusCol, urlCol, videoIdCol, uploadedAtCol, errorCol)
+  while (colWidths.length <= maxCol) colWidths.push({ wch: 15 })
+  colWidths[statusCol]     = { wch: 16 }
+  colWidths[urlCol]        = { wch: 45 }
+  colWidths[videoIdCol]    = { wch: 16 }
+  colWidths[uploadedAtCol] = { wch: 24 }
+  colWidths[errorCol]      = { wch: 50 }
+  newSheet['!cols'] = colWidths
+
+  workbook.Sheets[sheetName] = newSheet
+  return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
+}

@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getFileInfo: (filePath: string) => ipcRenderer.invoke('fs:get-file-info', filePath),
     listFolder: (folderPath: string) => ipcRenderer.invoke('fs:list-folder', folderPath),
     resolveDroppedFiles: (filePaths: string[]) => ipcRenderer.invoke('fs:resolve-dropped-files', filePaths),
+    saveFile: (opts: { defaultPath: string; data: number[] }) => ipcRenderer.invoke('fs:save-file', opts),
+    overwriteFile: (opts: { filePath: string; data: number[] }) => ipcRenderer.invoke('fs:overwrite-file', opts),
   },
 
   // Settings
