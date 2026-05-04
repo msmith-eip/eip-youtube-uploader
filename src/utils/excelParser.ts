@@ -48,19 +48,32 @@ export function parseExcelFile(base64Data: string, videoFolder?: string): Upload
   const sheet = workbook.Sheets[sheetName]
   const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' })
 
+  // Case-insensitive column lookup — works with ANY capitalization (TITLE, title, Title, etc.)
+  const col = (row: any, ...names: string[]): string => {
+    const rowKeys = Object.keys(row)
+    for (const name of names) {
+      const normalized = name.toLowerCase().replace(/[^a-z0-9]/g, '')
+      const match = rowKeys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g, '') === normalized)
+      if (match !== undefined && row[match] !== '' && row[match] !== undefined && row[match] !== null) {
+        return String(row[match]).trim()
+      }
+    }
+    return ''
+  }
+
   return rows
-    .filter(row => row.filename || row.Filename || row.FILENAME)
+    .filter(row => col(row, 'filename', 'file_name', 'video_filename'))
     .map(row => {
-      const filename = String(row.filename || row.Filename || row.FILENAME || '').trim()
-      const title = String(row.title || row.Title || row.TITLE || filename || '').trim()
-      const description = String(row.description || row.Description || row.DESCRIPTION || '').trim()
-      const tags = String(row.tags || row.Tags || row.TAGS || '').trim()
-      const privacy = normalizePrivacy(String(row.privacy || row.Privacy || row.PRIVACY || 'unlisted'))
-      const channelRaw = String(row.channel || row.Channel || row.CHANNEL || '').trim()
-      const channelId = String(row.channel_id || row.channelId || row.ChannelId || '').trim()
-      const categoryId = String(row.category_id || row.categoryId || row.CategoryId || '22').trim()
-      // Prefer full file path from FILE_PATH column (col I), fall back to folder+filename
-      const filePathCol = String(row.FILE_PATH || row.file_path || row.FilePath || row.filepath || row.FILEPATH || row.video_path || row.VIDEO_PATH || '').trim()
+      const filename = col(row, 'filename', 'file_name', 'video_filename')
+      const title = col(row, 'title', 'video_title') || filename
+      const description = col(row, 'description', 'desc', 'video_description')
+      const tags = col(row, 'tags', 'tag', 'keywords')
+      const privacy = normalizePrivacy(col(row, 'privacy', 'privacy_status') || 'unlisted')
+      const channelRaw = col(row, 'channel', 'channel_name', 'youtube_channel')
+      const channelId = col(row, 'channel_id', 'channelid', 'youtube_channel_id')
+      const categoryId = col(row, 'category_id', 'categoryid', 'category') || '22'
+      // FILE_PATH column (col I) — full path to the video file on disk
+      const filePathCol = col(row, 'file_path', 'filepath', 'video_path', 'full_path', 'path')
       let filePath: string
       if (filePathCol) {
         filePath = filePathCol
@@ -70,7 +83,6 @@ export function parseExcelFile(base64Data: string, videoFolder?: string): Upload
       } else {
         filePath = filename
       }
-
       return {
         id: uuidv4(),
         filePath,
@@ -90,7 +102,6 @@ export function parseExcelFile(base64Data: string, videoFolder?: string): Upload
       }
     })
 }
-
 function normalizePrivacy(value: string): PrivacyStatus {
   const v = value.toLowerCase().trim()
   if (v === 'public') return 'public'

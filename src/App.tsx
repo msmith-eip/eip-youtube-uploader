@@ -100,6 +100,22 @@ export default function App() {
     }
   }, [auth.authenticated, refreshChannels])
 
+  // Global upload completion listener — always active regardless of which page is open
+  useEffect(() => {
+    if (!window.electronAPI) return
+    const unsub = window.electronAPI.upload.onAllComplete(() => {
+      setIsUploading(false)
+    })
+    return () => { if (typeof unsub === 'function') unsub() }
+  }, [])
+
+  // Safety net: if all jobs are done (complete or error) but isUploading is still true, clear it
+  useEffect(() => {
+    if (!isUploading || uploadJobs.length === 0) return
+    const allDone = uploadJobs.every(j => j.status === 'complete' || j.status === 'error')
+    if (allDone) setIsUploading(false)
+  }, [uploadJobs, isUploading])
+
   if (loading) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-dark-950">
