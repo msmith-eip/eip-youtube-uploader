@@ -672,3 +672,37 @@ app.whenReady().then(() => {
     }, 5000)
   }
 })
+
+// IPC: Save a file to disk (used for Excel write-back)
+ipcMain.handle('fs:save-file', async (_event, { defaultPath, data }: { defaultPath: string; data: number[] }) => {
+  try {
+    const { filePath, canceled } = await dialog.showSaveDialog(mainWindow!, {
+      defaultPath,
+      filters: [
+        { name: 'Excel Files', extensions: ['xlsx'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    })
+    if (canceled || !filePath) return { success: false, canceled: true }
+    const buffer = Buffer.from(data)
+    fs.writeFileSync(filePath, buffer)
+    addLog('info', 'Excel', `Write-back saved to: ${filePath}`)
+    return { success: true, filePath }
+  } catch (err: any) {
+    addLog('error', 'Excel', `Write-back failed: ${err.message}`)
+    return { success: false, error: err.message }
+  }
+})
+
+// IPC: Overwrite the original Excel file in-place (no dialog)
+ipcMain.handle('fs:overwrite-file', async (_event, { filePath, data }: { filePath: string; data: number[] }) => {
+  try {
+    const buffer = Buffer.from(data)
+    fs.writeFileSync(filePath, buffer)
+    addLog('info', 'Excel', `Write-back overwrote: ${filePath}`)
+    return { success: true }
+  } catch (err: any) {
+    addLog('error', 'Excel', `Overwrite failed: ${err.message}`)
+    return { success: false, error: err.message }
+  }
+})

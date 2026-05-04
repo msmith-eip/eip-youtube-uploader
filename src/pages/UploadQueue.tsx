@@ -9,7 +9,7 @@ import {
 import { v4 as uuidv4 } from 'uuid'
 import { useApp } from '../App'
 import type { UploadJob, PrivacyStatus } from '../types'
-import { parseExcelFile, generateExcelTemplate, exportJobsToExcel, formatFileSize, EIP_CHANNELS, YOUTUBE_CATEGORIES } from '../utils/excelParser'
+import { parseExcelFile, generateExcelTemplate, exportJobsToExcel, writeBackToExcel, formatFileSize, EIP_CHANNELS, YOUTUBE_CATEGORIES } from '../utils/excelParser'
 
 type FilterStatus = 'all' | 'pending' | 'uploading' | 'complete' | 'error'
 
@@ -27,6 +27,8 @@ export default function UploadQueue() {
   const [bulkChannel, setBulkChannel] = useState('')
   const [showBulkEdit, setShowBulkEdit] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
+  const [excelFilePath, setExcelFilePath] = useState<string>('')
+  const [excelBase64, setExcelBase64] = useState<string>('')
   const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
@@ -69,8 +71,42 @@ export default function UploadQueue() {
       ))
     })
 
-    window.electronAPI.upload.onAllComplete(() => {
+    window.electronAPI.upload.onAllComplete(async () => {
       setIsUploading(false)
+      // Write back upload results to the original Excel file
+      setUploadJobs(currentJobs => {
+        const doWriteBack = async (jobs: typeof currentJobs) => {
+          if (!excelBase64 || !excelFilePath || !window.electronAPI) return
+          try {
+            const results = jobs.map(j => ({
+              filename: j.filePath || j.fileName,
+              status: j.status as 'complete' | 'error' | 'pending',
+              videoId: j.videoId,
+              youtubeUrl: j.youtubeUrl,
+              error: j.error,
+              uploadedAt: new Date().toISOString(),
+            }))
+            const updatedBuffer = writeBackToExcel(excelBase64, results)
+            const dataArray = Array.from(new Uint8Array(updatedBuffer))
+            // Try to overwrite in-place first, fall back to Save As dialog
+            const overwriteResult = await window.electronAPI!.fs.overwriteFile({ filePath: excelFilePath, data: dataArray })
+            if (overwriteResult.success) {
+              showToast('success', 'Excel updated with upload results ✓')
+            } else {
+              // Fall back to Save As
+              await window.electronAPI!.fs.saveFile({
+                defaultPath: excelFilePath.replace(/\.[^.]+$/, '_results.xlsx'),
+                data: dataArray,
+              })
+              showToast('success', 'Upload results saved to Excel ✓')
+            }
+          } catch (err: any) {
+            showToast('error', `Could not update Excel: ${err.message}`)
+          }
+        }
+        doWriteBack(currentJobs)
+        return currentJobs
+      })
     })
 
     return () => {
@@ -175,11 +211,13 @@ export default function UploadQueue() {
         }
       })
       setUploadJobs(prev => [...prev, ...enriched])
+      setExcelFilePath(filePath)
+      setExcelBase64(fileResult.data)
       showToast('success', `Imported ${enriched.length} video${enriched.length !== 1 ? 's' : ''} from Excel`)
     } catch (err: any) {
       showToast('error', `Excel import failed: ${err.message}`)
     }
-  }, [videoFolder, channels, settings.defaultPrivacy, setUploadJobs, showToast])
+  }, [videoFolder, channels, settings.defaultPrivacy, setUploadJobs, showToast, setExcelFilePath, setExcelBase64])
 
   const handleImportExcel = async () => {
     if (!window.electronAPI) return
