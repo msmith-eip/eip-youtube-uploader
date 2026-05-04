@@ -60,7 +60,9 @@ export function parseExcelFile(base64Data: string, videoFolder?: string): Upload
       const channelId = String(row.channel_id || row.channelId || row.ChannelId || '').trim()
       const categoryId = String(row.category_id || row.categoryId || row.CategoryId || '22').trim()
 
-      const filePath = videoFolder ? `${videoFolder}/${filename}` : filename
+      // Use the OS-appropriate path separator (Windows uses \, Mac/Linux use /)
+      const sep = videoFolder && videoFolder.includes('\\') ? '\\' : '/'
+      const filePath = videoFolder ? `${videoFolder}${sep}${filename}` : filename
 
       return {
         id: uuidv4(),

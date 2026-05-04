@@ -138,12 +138,24 @@ export default function UploadQueue() {
   const importExcelFromPath = useCallback(async (filePath: string) => {
     if (!window.electronAPI) return
     try {
+      // If no video folder is set, prompt the user to pick one before importing
+      let resolvedFolder = videoFolder
+      if (!resolvedFolder) {
+        const folderResult = await window.electronAPI.dialog.openFolder()
+        if (folderResult.canceled || !folderResult.filePaths.length) {
+          showToast('error', 'A video folder is required. Please select the folder containing your .mp4 files.')
+          return
+        }
+        resolvedFolder = folderResult.filePaths[0]
+        setVideoFolder(resolvedFolder)
+        showToast('info', `Video folder set to: ${resolvedFolder.split('\\').pop() || resolvedFolder.split('/').pop()}`)
+      }
       const fileResult = await window.electronAPI.fs.readFile(filePath)
       if (!fileResult.success || !fileResult.data) {
         showToast('error', `Could not read file: ${(fileResult as any).error || 'unknown error'}`)
         return
       }
-      const jobs = parseExcelFile(fileResult.data, videoFolder)
+      const jobs = parseExcelFile(fileResult.data, resolvedFolder)
       if (jobs.length === 0) {
         showToast('error', 'No valid rows found. Make sure the "filename" column is filled in the Upload Queue sheet.')
         return
@@ -173,7 +185,7 @@ export default function UploadQueue() {
     } catch (err: any) {
       showToast('error', `Excel import failed: ${err.message}`)
     }
-  }, [videoFolder, channels, settings.defaultPrivacy, setUploadJobs, showToast])
+  }, [videoFolder, channels, settings.defaultPrivacy, setUploadJobs, setVideoFolder, showToast])
 
   const handleImportExcel = async () => {
     if (!window.electronAPI) return
@@ -525,10 +537,28 @@ export default function UploadQueue() {
             Import Excel
           </button>
 
-          {videoFolder && (
-            <span className="text-xs text-dark-500 truncate max-w-xs">
-              Folder: {videoFolder.split('/').pop() || videoFolder.split('\\').pop()}
-            </span>
+          {videoFolder ? (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-dark-800 border border-dark-700 max-w-xs">
+              <FolderOpen size={12} className="text-accent-green flex-shrink-0" />
+              <span className="text-xs text-accent-green truncate" title={videoFolder}>
+                {videoFolder.split('\\').pop() || videoFolder.split('/').pop()}
+              </span>
+              <button
+                onClick={handleAddFolder}
+                className="text-dark-500 hover:text-dark-300 ml-1 flex-shrink-0"
+                title="Change video folder"
+              >
+                <RefreshCw size={10} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleAddFolder}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs hover:bg-amber-500/20 transition-all"
+            >
+              <FolderOpen size={12} />
+              Set Video Folder
+            </button>
           )}
 
           <div className="flex-1" />
