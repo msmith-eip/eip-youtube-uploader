@@ -138,24 +138,13 @@ export default function UploadQueue() {
   const importExcelFromPath = useCallback(async (filePath: string) => {
     if (!window.electronAPI) return
     try {
-      // If no video folder is set, prompt the user to pick one before importing
-      let resolvedFolder = videoFolder
-      if (!resolvedFolder) {
-        const folderResult = await window.electronAPI.dialog.openFolder()
-        if (folderResult.canceled || !folderResult.filePaths.length) {
-          showToast('error', 'A video folder is required. Please select the folder containing your .mp4 files.')
-          return
-        }
-        resolvedFolder = folderResult.filePaths[0]
-        setVideoFolder(resolvedFolder)
-        showToast('info', `Video folder set to: ${resolvedFolder.split('\\').pop() || resolvedFolder.split('/').pop()}`)
-      }
       const fileResult = await window.electronAPI.fs.readFile(filePath)
       if (!fileResult.success || !fileResult.data) {
         showToast('error', `Could not read file: ${(fileResult as any).error || 'unknown error'}`)
         return
       }
-      const jobs = parseExcelFile(fileResult.data, resolvedFolder)
+      // Pass videoFolder as optional fallback — FILE_PATH column takes priority
+      const jobs = parseExcelFile(fileResult.data, videoFolder || undefined)
       if (jobs.length === 0) {
         showToast('error', 'No valid rows found. Make sure the "filename" column is filled in the Upload Queue sheet.')
         return
@@ -185,7 +174,7 @@ export default function UploadQueue() {
     } catch (err: any) {
       showToast('error', `Excel import failed: ${err.message}`)
     }
-  }, [videoFolder, channels, settings.defaultPrivacy, setUploadJobs, setVideoFolder, showToast])
+  }, [videoFolder, channels, settings.defaultPrivacy, setUploadJobs, showToast])
 
   const handleImportExcel = async () => {
     if (!window.electronAPI) return
