@@ -1,0 +1,157 @@
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { AnimatePresence, motion } from 'framer-motion'
+import Layout from './components/Layout'
+import Dashboard from './pages/Dashboard'
+import UploadQueue from './pages/UploadQueue'
+import History from './pages/History'
+import Settings from './pages/Settings'
+import Logs from './pages/Logs'
+import AuthScreen from './pages/AuthScreen'
+import type { AuthStatus, AppSettings, Channel, UploadJob } from './types'
+
+// ─── App Context ──────────────────────────────────────────────────────────────
+interface AppContextType {
+  auth: AuthStatus
+  settings: AppSettings
+  channels: Channel[]
+  uploadJobs: UploadJob[]
+  isUploading: boolean
+  setAuth: (auth: AuthStatus) => void
+  setSettings: (settings: AppSettings) => void
+  setChannels: (channels: Channel[]) => void
+  setUploadJobs: (jobs: UploadJob[] | ((prev: UploadJob[]) => UploadJob[])) => void
+  setIsUploading: (v: boolean) => void
+  refreshChannels: () => Promise<void>
+}
+
+const AppContext = createContext<AppContextType | null>(null)
+
+export function useApp() {
+  const ctx = useContext(AppContext)
+  if (!ctx) throw new Error('useApp must be used within AppProvider')
+  return ctx
+}
+
+// ─── Default Settings ─────────────────────────────────────────────────────────
+const DEFAULT_SETTINGS: AppSettings = {
+  defaultPrivacy: 'unlisted',
+  defaultCategory: '22',
+  concurrentUploads: 1,
+  delayBetweenUploads: 2000,
+}
+
+// ─── App Component ────────────────────────────────────────────────────────────
+export default function App() {
+  const [auth, setAuth] = useState<AuthStatus>({ authenticated: false })
+  const [settings, setSettingsState] = useState<AppSettings>(DEFAULT_SETTINGS)
+  const [channels, setChannels] = useState<Channel[]>([])
+  const [uploadJobs, setUploadJobs] = useState<UploadJob[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  // Check if running in Electron
+  const isElectron = typeof window !== 'undefined' && !!window.electronAPI
+
+  useEffect(() => {
+    async function init() {
+      if (!isElectron) {
+        setLoading(false)
+        return
+      }
+      try {
+        const [authStatus, savedSettings] = await Promise.all([
+          window.electronAPI.auth.getStatus(),
+          window.electronAPI.settings.get(),
+        ])
+        setAuth(authStatus)
+        if (savedSettings) setSettingsState(savedSettings)
+      } catch (err) {
+        console.error('Init error:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    init()
+  }, [isElectron])
+
+  const setSettings = useCallback(async (newSettings: AppSettings) => {
+    setSettingsState(newSettings)
+    if (isElectron) {
+      await window.electronAPI.settings.set(newSettings)
+    }
+  }, [isElectron])
+
+  const refreshChannels = useCallback(async () => {
+    if (!isElectron || !auth.authenticated) return
+    try {
+      const result = await window.electronAPI.youtube.getChannels()
+      if (result.success && result.channels) {
+        setChannels(result.channels)
+      }
+    } catch (err) {
+      console.error('Failed to fetch channels:', err)
+    }
+  }, [isElectron, auth.authenticated])
+
+  useEffect(() => {
+    if (auth.authenticated) {
+      refreshChannels()
+    }
+  }, [auth.authenticated, refreshChannels])
+
+  if (loading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-dark-950">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center gap-4"
+        >
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-600 to-accent-purple flex items-center justify-center shadow-glow">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+              <path d="M8 8L24 16L8 24V8Z" fill="white" />
+            </svg>
+          </div>
+          <div className="flex gap-1">
+            {[0, 1, 2].map(i => (
+              <motion.div
+                key={i}
+                className="w-2 h-2 rounded-full bg-brand-500"
+                animate={{ opacity: [0.3, 1, 0.3] }}
+                transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
+              />
+            ))}
+          </div>
+        </motion.div>
+      </div>
+    )
+  }
+
+  return (
+    <AppContext.Provider value={{
+      auth, settings, channels, uploadJobs, isUploading,
+      setAuth, setSettings, setChannels, setUploadJobs, setIsUploading,
+      refreshChannels,
+    }}>
+      <HashRouter>
+        <AnimatePresence mode="wait">
+          {!auth.authenticated ? (
+            <AuthScreen key="auth" />
+          ) : (
+            <Layout key="app">
+              <Routes>
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/upload" element={<UploadQueue />} />
+                <Route path="/history" element={<History />} />
+                <Route path="/logs" element={<Logs />} />
+                <Route path="/settings" element={<Settings />} />
+              </Routes>
+            </Layout>
+          )}
+        </AnimatePresence>
+      </HashRouter>
+    </AppContext.Provider>
+  )
+}
