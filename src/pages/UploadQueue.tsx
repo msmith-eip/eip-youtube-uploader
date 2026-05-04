@@ -754,14 +754,25 @@ export default function UploadQueue() {
                   }}
                   onBrowseFile={async () => {
                     if (!window.electronAPI) return
-                    const result = await window.electronAPI.dialog.openVideos()
-                    if (result.canceled || !result.filePaths.length) return
+                    // Small delay to ensure window focus before opening native dialog
+                    await new Promise(r => setTimeout(r, 150))
+                    let result: any
+                    try {
+                      result = await window.electronAPI.dialog.openVideos()
+                    } catch (e) {
+                      console.error('Browse dialog error:', e)
+                      return
+                    }
+                    if (!result || result.canceled || !result.filePaths || !result.filePaths.length) return
                     const newPath = result.filePaths[0]
-                    const info = await window.electronAPI.fs.getFileInfo(newPath)
+                    let info: any = { name: newPath.split(/[/\\]/).pop(), size: 0 }
+                    try {
+                      info = await window.electronAPI.fs.getFileInfo(newPath)
+                    } catch (e) {}
                     setUploadJobs(prev => prev.map(j => j.id === job.id ? {
                       ...j,
                       filePath: newPath,
-                      fileName: info.name || newPath.split(/[\/]/).pop() || newPath,
+                      fileName: info.name || newPath.split(/[/\\]/).pop() || newPath,
                       fileSize: info.size || j.fileSize,
                       status: 'pending',
                       error: undefined,
