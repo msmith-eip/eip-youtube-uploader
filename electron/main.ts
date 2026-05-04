@@ -322,15 +322,17 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
     // Notify start
     mainWindow?.webContents.send('upload:job-start', { index: i, job })
 
-    try {
+    const attemptUpload = async (attempt: number): Promise<void> => {
       // Refresh token if needed
       const tokens = store.get('tokens') as any
       if (tokens) oauth2Client.setCredentials(tokens)
 
       const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
 
-      const fileStream = fs.createReadStream(job.filePath)
-      const fileStat = fs.statSync(job.filePath)
+      // Normalize file path - trim whitespace for Windows paths with spaces
+      const normalizedPath = job.filePath.trim()
+      const fileStream = fs.createReadStream(normalizedPath)
+      const fileStat = fs.statSync(normalizedPath)
 
       const response = await youtube.videos.insert(
         {
@@ -388,14 +390,28 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
       if (i < uploadQueue.length - 1 && !cancelUpload) {
         await new Promise(resolve => setTimeout(resolve, delay))
       }
+    }
+    try {
+      await attemptUpload(1)
     } catch (err: any) {
-      mainWindow?.webContents.send('upload:job-error', {
+      // Auto-retry once after 3 seconds
+      mainWindow?.webContents.send('upload:job-retrying', {
         index: i,
+        attempt: 1,
         error: err.message || 'Upload failed',
       })
-
-      // Continue to next job on error
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      try {
+        await attemptUpload(2)
+      } catch (err2: any) {
+        // Both attempts failed - mark as error with retry button
+        mainWindow?.webContents.send('upload:job-error', {
+          index: i,
+          error: err2.message || 'Upload failed after retry',
+          canRetry: true,
+        })
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      }
     }
   }
 
@@ -412,6 +428,73 @@ ipcMain.handle('upload:cancel', async () => {
   cancelUpload = true
   isUploading = false
   return { success: true }
+})
+ipcMain.handle('upload:retry-job', async (event, job: any) => {
+  // Retry a single failed job
+  mainWindow?.webContents.send('upload:job-start', { index: job._queueIndex || 0, job })
+  const attemptSingle = async (): Promise<void> => {
+    const tokens = store.get('tokens') as any
+    if (tokens) oauth2Client.setCredentials(tokens)
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
+    const normalizedPath = job.filePath.trim()
+    const fileStream = fs.createReadStream(normalizedPath)
+    const fileStat = fs.statSync(normalizedPath)
+    const response = await youtube.videos.insert(
+      {
+        part: ['snippet', 'status'],
+        requestBody: {
+          snippet: {
+            title: job.title,
+            description: job.description || '',
+            tags: job.tags ? job.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
+            categoryId: job.categoryId || '22',
+            channelId: job.channelId || undefined,
+          },
+          status: { privacyStatus: job.privacy || 'unlisted' },
+        },
+        media: { mimeType: 'video/mp4', body: fileStream },
+      },
+      {
+        onUploadProgress: (evt: any) => {
+          const progress = Math.round((evt.bytesRead / fileStat.size) * 100)
+          mainWindow?.webContents.send('upload:progress', {
+            index: job._queueIndex || 0,
+            progress,
+            bytesUploaded: evt.bytesRead,
+            totalBytes: fileStat.size,
+          })
+        },
+      }
+    )
+    const videoId = response.data.id
+    const history = (store.get('uploadHistory') as any[]) || []
+    history.unshift({
+      id: videoId,
+      title: job.title,
+      channel: job.channelName || job.channelId,
+      privacy: job.privacy,
+      uploadedAt: new Date().toISOString(),
+      filePath: job.filePath,
+      youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+    })
+    store.set('uploadHistory', history.slice(0, 1000))
+    mainWindow?.webContents.send('upload:job-complete', {
+      index: job._queueIndex || 0,
+      videoId,
+      youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+    })
+  }
+  try {
+    await attemptSingle()
+    return { success: true }
+  } catch (err: any) {
+    mainWindow?.webContents.send('upload:job-error', {
+      index: job._queueIndex || 0,
+      error: err.message || 'Retry failed',
+      canRetry: true,
+    })
+    return { success: false, error: err.message }
+  }
 })
 
 ipcMain.handle('upload:get-status', async () => {

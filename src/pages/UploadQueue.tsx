@@ -58,9 +58,14 @@ export default function UploadQueue() {
       ))
     })
 
-    window.electronAPI.upload.onJobError(({ index, error }) => {
+    window.electronAPI.upload.onJobError(({ index, error, canRetry }) => {
       setUploadJobs(prev => prev.map((job, i) =>
-        i === index ? { ...job, status: 'error', error } : job
+        i === index ? { ...job, status: 'error', error, canRetry: canRetry || false } : job
+      ))
+    })
+    ;(window.electronAPI.upload as any).onJobRetrying?.(({ index, attempt, error }: any) => {
+      setUploadJobs(prev => prev.map((job, i) =>
+        i === index ? { ...job, status: 'retrying', error: `Retrying... (attempt ${attempt}: ${error})` } : job
       ))
     })
 
@@ -702,6 +707,13 @@ export default function UploadQueue() {
                     setSelectedJobs(next)
                   }}
                   onExpand={() => setExpandedJob(expandedJob === job.id ? null : job.id)}
+                  onRetry={async () => {
+                    const queueIndex = filteredJobs.findIndex(j => j.id === job.id)
+                    setUploadJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'uploading', error: undefined, canRetry: false, progress: 0 } : j))
+                    if (window.electronAPI) {
+                      await (window.electronAPI.upload as any).retryJob({ ...job, _queueIndex: queueIndex })
+                    }
+                  }}
                   onEdit={() => startEdit(job)}
                   onSave={() => saveEdit(job.id)}
                   onCancelEdit={cancelEdit}
@@ -728,6 +740,7 @@ interface JobRowProps {
   isSelected: boolean
   onSelect: (checked: boolean) => void
   onExpand: () => void
+  onRetry?: () => void
   onEdit: () => void
   onSave: () => void
   onCancelEdit: () => void
@@ -827,7 +840,7 @@ function JobRow({
             </div>
           )}
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-[10px] text-dark-500 truncate">{job.fileName}</span>
+            <span className="text-[10px] text-dark-500 break-all leading-tight">{job.fileName}</span>
             {job.fileSize > 0 && (
               <span className="text-[10px] text-dark-600">{formatFileSize(job.fileSize)}</span>
             )}
@@ -898,10 +911,27 @@ function JobRow({
           {job.status === 'complete' && (
             <span className="text-[10px] text-accent-green font-medium">Uploaded</span>
           )}
+          {job.status === 'retrying' && (
+            <div className="flex flex-col gap-0.5">
+              <div className="flex items-center gap-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-pulse flex-shrink-0" />
+                <span className="text-[10px] text-yellow-400 font-medium">Retrying...</span>
+              </div>
+            </div>
+          )}
           {job.status === 'error' && (
-            <span className="text-[10px] text-accent-red font-medium truncate block" title={job.error}>
-              Failed
-            </span>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-accent-red font-medium">Failed</span>
+              {job.canRetry && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onRetry?.() }}
+                  className="px-2 py-0.5 rounded text-[10px] bg-accent-red/20 hover:bg-accent-red/40 text-accent-red border border-accent-red/30 transition-colors font-medium w-fit"
+                  title="Retry upload"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
           )}
           {job.status === 'pending' && (
             <span className="text-[10px] text-dark-500">Queued</span>

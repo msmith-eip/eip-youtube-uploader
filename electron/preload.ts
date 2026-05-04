@@ -71,6 +71,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onJobError: (callback: (data: any) => void) => {
       ipcRenderer.on('upload:job-error', (_, data) => callback(data))
     },
+    onJobRetrying: (callback: (data: any) => void) => {
+      ipcRenderer.on('upload:job-retrying', (_, data) => callback(data))
+    },
+    retryJob: (job: any) => ipcRenderer.invoke('upload:retry-job', job),
     onAllComplete: (callback: (data: any) => void) => {
       ipcRenderer.on('upload:all-complete', (_, data) => callback(data))
     },
@@ -79,6 +83,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeAllListeners('upload:progress')
       ipcRenderer.removeAllListeners('upload:job-complete')
       ipcRenderer.removeAllListeners('upload:job-error')
+      ipcRenderer.removeAllListeners('upload:job-retrying')
       ipcRenderer.removeAllListeners('upload:all-complete')
     },
   },
