@@ -9,6 +9,64 @@ import { autoUpdater } from 'electron-updater'
 
 const isDev = process.env.NODE_ENV === 'development'
 
+// ─── OneDrive Placeholder Detection & Hydration ───────────────────────────────
+// FILE_ATTRIBUTE_OFFLINE = 0x1000 | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x400000
+// These flags indicate a OneDrive Files-On-Demand placeholder (cloud-only file)
+function isOneDrivePlaceholder(filePath: string): boolean {
+  if (process.platform !== 'win32') return false
+  try {
+    const { execFileSync } = require('child_process')
+    // Pass path as a variable to avoid quoting issues
+    const script = `$p = [System.Uri]::UnescapeDataString('${encodeURIComponent(filePath)}'); [int][System.IO.File]::GetAttributes($p)`
+    const result = execFileSync('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-Command', script,
+    ], { timeout: 5000, encoding: 'utf8' }).trim()
+    const attrs = parseInt(result, 10)
+    if (isNaN(attrs)) return false
+    const OFFLINE = 0x1000
+    const RECALL_ON_DATA_ACCESS = 0x400000
+    return (attrs & OFFLINE) !== 0 || (attrs & RECALL_ON_DATA_ACCESS) !== 0
+  } catch {
+    return false
+  }
+}
+
+async function hydrateOneDriveFile(
+  filePath: string,
+  onProgress: (msg: string) => void,
+  timeoutMs = 300000
+): Promise<void> {
+  const basename = require('path').basename(filePath)
+  onProgress(`Syncing from OneDrive: ${basename}`)
+  addLog('info', 'OneDrive', `Triggering OneDrive download for: ${filePath}`)
+  // Trigger hydration by attempting a small read — this wakes up OneDrive sync
+  await new Promise<void>((resolve) => {
+    const { execFile: execFileCb } = require('child_process')
+    execFileCb('powershell.exe', [
+      '-NoProfile', '-NonInteractive', '-Command',
+      `$p = [System.Uri]::UnescapeDataString('${encodeURIComponent(filePath)}'); try { $s = [System.IO.File]::OpenRead($p); $b = New-Object byte[] 1; $s.Read($b,0,1)|Out-Null; $s.Close() } catch {}`,
+    ], { timeout: 30000 }, () => resolve())
+  })
+  // Poll until the file is no longer a placeholder
+  const pollInterval = 3000
+  const startTime = Date.now()
+  while (Date.now() - startTime < timeoutMs) {
+    if (!isOneDrivePlaceholder(filePath)) {
+      try {
+        const stat = require('fs').statSync(filePath)
+        if (stat.size > 0) {
+          addLog('success', 'OneDrive', `File synced: ${basename}`)
+          return
+        }
+      } catch { /* keep polling */ }
+    }
+    const elapsed = Math.round((Date.now() - startTime) / 1000)
+    onProgress(`Waiting for OneDrive sync... (${elapsed}s elapsed)`)
+    await new Promise(r => setTimeout(r, pollInterval))
+  }
+  throw new Error(`OneDrive sync timed out after ${timeoutMs / 1000}s for: ${basename}`)
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 const store = new Store({
   name: 'eip-uploader-config',
@@ -331,6 +389,14 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
 
       // Normalize file path - trim whitespace for Windows paths with spaces
       const normalizedPath = job.filePath.trim()
+      // ── OneDrive Files-On-Demand: detect placeholder and trigger download ──
+      if (isOneDrivePlaceholder(normalizedPath)) {
+        mainWindow?.webContents.send('upload:job-syncing', { index: i, message: 'Syncing from OneDrive...' })
+        addLog('info', 'OneDrive', `Placeholder detected for job ${i}: ${normalizedPath}`)
+        await hydrateOneDriveFile(normalizedPath, (msg) => {
+          mainWindow?.webContents.send('upload:job-syncing', { index: i, message: msg })
+        })
+      }
       const fileStream = fs.createReadStream(normalizedPath)
       const fileStat = fs.statSync(normalizedPath)
 
@@ -453,6 +519,15 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
     if (tokens) oauth2Client.setCredentials(tokens)
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
     const normalizedPath = job.filePath.trim()
+    // ── OneDrive Files-On-Demand: detect placeholder and trigger download ──
+    const retryIndex = job._queueIndex || 0
+    if (isOneDrivePlaceholder(normalizedPath)) {
+      mainWindow?.webContents.send('upload:job-syncing', { index: retryIndex, message: 'Syncing from OneDrive...' })
+      addLog('info', 'OneDrive', `Placeholder detected for retry: ${normalizedPath}`)
+      await hydrateOneDriveFile(normalizedPath, (msg) => {
+        mainWindow?.webContents.send('upload:job-syncing', { index: retryIndex, message: msg })
+      })
+    }
     const fileStream = fs.createReadStream(normalizedPath)
     const fileStat = fs.statSync(normalizedPath)
     const response = await youtube.videos.insert(
