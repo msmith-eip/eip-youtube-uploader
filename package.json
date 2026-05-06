@@ -1,6 +1,6 @@
 {
   "name": "eip-youtube-uploader",
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Elite Insurance Partners - YouTube Bulk Video Uploader",
   "main": "dist-electron/main.js",
   "author": "Elite Insurance Partners",

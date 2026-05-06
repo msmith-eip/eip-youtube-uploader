@@ -24,12 +24,15 @@ export interface UploadJob {
   channelId: string
   channelName: string
   categoryId: string
-  status: 'pending' | 'uploading' | 'syncing' | 'retrying' | 'complete' | 'error' | 'cancelled'
+  status: 'pending' | 'uploading' | 'syncing' | 'retrying' | 'complete' | 'error' | 'cancelled' | 'skipped'
   progress: number
   bytesUploaded: number
   videoId?: string
   youtubeUrl?: string
   error?: string
+  skipReason?: string
+  existingUrl?: string
+  forceUpload?: boolean
   addedAt: string
 }
 
@@ -108,6 +111,8 @@ declare global {
         onJobError: (callback: (data: { index: number; error: string }) => void) => void
         onAllComplete: (callback: (data: { total: number; cancelled: boolean }) => void) => void
         onJobSyncing?: (callback: (data: { index: number; message: string }) => void) => void
+        onJobSkipped?: (callback: (data: { index: number; reason: string; existingUrl?: string }) => void) => void
+        forceUploadJob?: (job: any) => Promise<{ success: boolean; error?: string }>
         removeAllListeners: () => void
       }
     }
