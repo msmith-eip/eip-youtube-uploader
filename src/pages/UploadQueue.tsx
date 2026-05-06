@@ -75,6 +75,11 @@ export default function UploadQueue() {
         i === index ? { ...job, status: 'syncing', error: message } : job
       ))
     })
+    ;(window.electronAPI.upload as any).onJobSkipped?.(({ index, reason, existingUrl }: any) => {
+      setUploadJobs(prev => prev.map((job, i) =>
+        i === index ? { ...job, status: 'skipped', skipReason: reason, existingUrl } : job
+      ))
+    })
 
     window.electronAPI.upload.onAllComplete(async () => {
       setIsUploading(false)
@@ -412,7 +417,10 @@ export default function UploadQueue() {
   const filteredJobs = uploadJobs.filter(job => {
     if (filterStatus !== 'all') {
       // 'syncing' and 'retrying' are sub-states of uploading — show them under the uploading filter
-      const effectiveStatus = (job.status === 'syncing' || job.status === 'retrying') ? 'uploading' : job.status
+      // 'skipped' shows under the 'error' filter tab
+      const effectiveStatus = (job.status === 'syncing' || job.status === 'retrying') ? 'uploading'
+        : job.status === 'skipped' ? 'error'
+        : job.status
       if (effectiveStatus !== filterStatus) return false
     }
     if (searchQuery) {
@@ -432,7 +440,7 @@ export default function UploadQueue() {
     pending: uploadJobs.filter(j => j.status === 'pending').length,
     uploading: uploadJobs.filter(j => j.status === 'uploading' || j.status === 'syncing').length,
     complete: uploadJobs.filter(j => j.status === 'complete').length,
-    error: uploadJobs.filter(j => j.status === 'error').length,
+    error: uploadJobs.filter(j => j.status === 'error' || j.status === 'skipped').length,
     syncing: uploadJobs.filter(j => j.status === 'syncing').length,
   }
 
@@ -795,6 +803,13 @@ export default function UploadQueue() {
                   onCancelEdit={cancelEdit}
                   onRemove={() => handleRemoveJob(job.id)}
                   onEditChange={updates => setEditValues(prev => ({ ...prev, ...updates }))}
+                  onForceUpload={async () => {
+                    const queueIndex = filteredJobs.findIndex(j => j.id === job.id)
+                    setUploadJobs(prev => prev.map(j => j.id === job.id ? { ...j, status: 'uploading', error: undefined, skipReason: undefined, existingUrl: undefined, progress: 0 } : j))
+                    if (window.electronAPI) {
+                      await (window.electronAPI.upload as any).forceUploadJob?.({ ...job, _queueIndex: queueIndex })
+                    }
+                  }}
                 />
               ))}
             </AnimatePresence>
@@ -817,6 +832,7 @@ interface JobRowProps {
   onSelect: (checked: boolean) => void
   onExpand: () => void
   onRetry?: () => void
+  onForceUpload?: () => void
   onBrowseFile?: () => void
   onEdit: () => void
   onSave: () => void
@@ -827,7 +843,8 @@ interface JobRowProps {
 
 function JobRow({
   job, index, channels, isEditing, editValues, isExpanded,
-  isSelected, onSelect, onExpand, onEdit, onSave, onCancelEdit, onRemove, onEditChange
+  isSelected, onSelect, onExpand, onEdit, onSave, onCancelEdit, onRemove, onEditChange,
+  onRetry, onForceUpload, onBrowseFile
 }: JobRowProps) {
   const statusColors = {
     pending: 'text-dark-400',
@@ -836,6 +853,7 @@ function JobRow({
     complete: 'text-accent-green',
     error: 'text-accent-red',
     cancelled: 'text-dark-500',
+    skipped: 'text-yellow-600',
   }
 
   const privacyBadge = {
@@ -862,6 +880,8 @@ function JobRow({
           ? 'border-brand-500/30 bg-dark-800'
           : job.status === 'syncing'
           ? 'border-yellow-500/30 bg-dark-800'
+          : job.status === 'skipped'
+          ? 'border-yellow-700/30 bg-dark-800'
           : 'border-dark-700 bg-dark-800 hover:border-dark-600'
       }`}
     >
@@ -898,6 +918,7 @@ function JobRow({
           {job.status === 'complete' && <CheckCircle size={14} className="text-accent-green" />}
           {job.status === 'error' && <AlertCircle size={14} className="text-accent-red" />}
           {job.status === 'cancelled' && <X size={14} className="text-dark-500" />}
+          {job.status === 'skipped' && <AlertCircle size={14} className="text-yellow-600" />}
         </div>
 
         {/* File info */}
@@ -1043,6 +1064,31 @@ function JobRow({
           )}
           {job.status === 'pending' && (
             <span className="text-[10px] text-dark-500">Queued</span>
+          )}
+          {job.status === 'skipped' && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] text-yellow-600 font-medium">Skipped</span>
+              <div className="flex flex-col gap-0.5">
+                {job.existingUrl && (
+                  <a
+                    href={job.existingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[9px] text-yellow-700/80 hover:text-yellow-500 underline leading-tight"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    View existing
+                  </a>
+                )}
+                <button
+                  onClick={(e) => { e.stopPropagation(); onForceUpload?.() }}
+                  className="px-2 py-0.5 rounded text-[10px] bg-yellow-700/20 hover:bg-yellow-700/40 text-yellow-500 border border-yellow-700/30 transition-colors font-medium w-fit"
+                  title="Upload anyway, ignoring duplicate check"
+                >
+                  Upload Anyway
+                </button>
+              </div>
+            </div>
           )}
         </div>
 

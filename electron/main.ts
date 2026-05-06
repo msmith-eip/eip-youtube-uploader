@@ -377,6 +377,24 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
     currentUploadIndex = i
     const job = uploadQueue[i]
 
+    // ── Duplicate filename check ────────────────────────────────────────────
+    // Skip if this filename was already uploaded successfully (unless forceUpload flag is set)
+    if (!job.forceUpload) {
+      const jobFileName = require('path').basename(job.filePath.trim())
+      const duplicate = history.find(
+        (h: any) => h.status === 'success' && h.filePath && require('path').basename(h.filePath) === jobFileName
+      )
+      if (duplicate) {
+        addLog('info', 'Upload', `Skipping duplicate: ${jobFileName} (already uploaded as ${duplicate.youtubeUrl})`)
+        mainWindow?.webContents.send('upload:job-skipped', {
+          index: i,
+          reason: `Already uploaded (${jobFileName})`,
+          existingUrl: duplicate.youtubeUrl,
+        })
+        continue
+      }
+    }
+
     // Notify start
     mainWindow?.webContents.send('upload:job-start', { index: i, job })
 
@@ -590,6 +608,87 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
     mainWindow?.webContents.send('upload:job-error', {
       index: job._queueIndex || 0,
       error: err.message || 'Retry failed',
+      canRetry: true,
+    })
+    return { success: false, error: err.message }
+  }
+})
+
+// Force-upload a previously skipped job (bypasses duplicate check)
+ipcMain.handle('upload:force-upload-job', async (event, job: any) => {
+  // Reuse the retry handler logic — same flow, just with forceUpload semantics
+  mainWindow?.webContents.send('upload:job-start', { index: job._queueIndex || 0, job })
+  const attemptForce = async (): Promise<void> => {
+    const tokens = store.get('tokens') as any
+    if (tokens) oauth2Client.setCredentials(tokens)
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
+    const normalizedPath = job.filePath.trim()
+    const forceIndex = job._queueIndex || 0
+    if (isOneDrivePlaceholder(normalizedPath)) {
+      mainWindow?.webContents.send('upload:job-syncing', { index: forceIndex, message: 'Syncing from OneDrive...' })
+      await hydrateOneDriveFile(normalizedPath, (msg) => {
+        mainWindow?.webContents.send('upload:job-syncing', { index: forceIndex, message: msg })
+      })
+    }
+    const fileStream = fs.createReadStream(normalizedPath)
+    const fileStat = fs.statSync(normalizedPath)
+    const response = await youtube.videos.insert(
+      {
+        part: ['snippet', 'status'],
+        requestBody: {
+          snippet: {
+            title: job.title || job.fileName.replace(/\.[^/.]+$/, ''),
+            description: job.description || '',
+            tags: job.tags ? job.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
+            categoryId: job.categoryId || '22',
+            channelId: job.channelId || undefined,
+          },
+          status: {
+            privacyStatus: job.privacy || 'unlisted',
+            selfDeclaredMadeForKids: job.selfDeclaredMadeForKids ?? false,
+            containsSyntheticMedia: job.containsSyntheticMedia ?? true,
+          } as any,
+        },
+        media: { mimeType: 'video/mp4', body: fileStream },
+      },
+      {
+        onUploadProgress: (evt: any) => {
+          const progress = Math.round((evt.bytesRead / fileStat.size) * 100)
+          mainWindow?.webContents.send('upload:progress', {
+            index: forceIndex,
+            progress,
+            bytesUploaded: evt.bytesRead,
+            totalBytes: fileStat.size,
+          })
+        },
+      }
+    )
+    const videoId = response.data.id
+    const history = (store.get('uploadHistory') as any[]) || []
+    history.unshift({
+      id: videoId,
+      title: job.title || job.fileName,
+      channel: job.channelName || job.channelId,
+      privacy: job.privacy,
+      uploadedAt: new Date().toISOString(),
+      filePath: job.filePath,
+      youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+      status: 'success',
+    })
+    store.set('uploadHistory', history.slice(0, 1000))
+    mainWindow?.webContents.send('upload:job-complete', {
+      index: forceIndex,
+      videoId,
+      youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+    })
+  }
+  try {
+    await attemptForce()
+    return { success: true }
+  } catch (err: any) {
+    mainWindow?.webContents.send('upload:job-error', {
+      index: job._queueIndex || 0,
+      error: err.message || 'Force upload failed',
       canRetry: true,
     })
     return { success: false, error: err.message }
