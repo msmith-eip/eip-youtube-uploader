@@ -30,6 +30,7 @@ export default function UploadQueue() {
   const [excelFilePath, setExcelFilePath] = useState<string>('')
   const [excelBase64, setExcelBase64] = useState<string>('')
   const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
+  const [showPrivacyWarning, setShowPrivacyWarning] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
 
@@ -79,6 +80,12 @@ export default function UploadQueue() {
       setUploadJobs(prev => prev.map((job, i) =>
         i === index ? { ...job, status: 'skipped', skipReason: reason, existingUrl } : job
       ))
+    })
+    ;(window.electronAPI.upload as any).onJobPrivacyWarning?.(({ index }: any) => {
+      setUploadJobs(prev => prev.map((job, i) =>
+        i === index ? { ...job, privacyForcedPrivate: true } : job
+      ))
+      setShowPrivacyWarning(true)
     })
 
     window.electronAPI.upload.onAllComplete(async () => {
@@ -504,6 +511,48 @@ export default function UploadQueue() {
             <button onClick={() => setToast(null)} className="ml-2 opacity-60 hover:opacity-100">
               <X size={13} />
             </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── YouTube Compliance Audit Warning Banner ── */}
+      <AnimatePresence>
+        {showPrivacyWarning && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="flex-shrink-0 mx-6 mt-4 rounded-xl border border-yellow-600/40 bg-yellow-950/40 px-4 py-3"
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle size={18} className="text-yellow-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-yellow-400">Videos forced to Private by YouTube</p>
+                <p className="text-xs text-yellow-600 mt-1 leading-relaxed">
+                  YouTube automatically restricts videos uploaded via API to <strong>Private</strong> when the Google Cloud project has not completed the <strong>YouTube Compliance Audit</strong>. This affects all API projects created after July 28, 2020.
+                </p>
+                <p className="text-xs text-yellow-600 mt-1 leading-relaxed">
+                  To fix this, submit the YouTube API Compliance Audit request. Even for internal/personal tools, this audit is required to upload unlisted or public videos via the API.
+                </p>
+                <div className="flex items-center gap-3 mt-2">
+                  <a
+                    href="https://support.google.com/youtube/contact/yt_api_form"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-600/20 hover:bg-yellow-600/35 border border-yellow-600/40 text-yellow-400 text-xs font-medium transition-colors"
+                  >
+                    <ExternalLink size={12} />
+                    Submit Compliance Audit Request
+                  </a>
+                  <button
+                    onClick={() => setShowPrivacyWarning(false)}
+                    className="text-xs text-yellow-700 hover:text-yellow-500 transition-colors"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1020,7 +1069,14 @@ function JobRow({
             </div>
           )}
           {job.status === 'complete' && (
-            <span className="text-[10px] text-accent-green font-medium">Uploaded</span>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] text-accent-green font-medium">Uploaded</span>
+              {job.privacyForcedPrivate && (
+                <span className="text-[9px] text-yellow-500 font-medium leading-tight" title="YouTube forced this video to Private. Your API project needs a Compliance Audit.">
+                  ⚠ Forced Private
+                </span>
+              )}
+            </div>
           )}
           {job.status === 'retrying' && (
             <div className="flex flex-col gap-0.5">

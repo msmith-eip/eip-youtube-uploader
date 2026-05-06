@@ -33,6 +33,7 @@ export interface UploadJob {
   skipReason?: string
   existingUrl?: string
   forceUpload?: boolean
+  privacyForcedPrivate?: boolean
   addedAt: string
 }
 
@@ -112,6 +113,7 @@ declare global {
         onAllComplete: (callback: (data: { total: number; cancelled: boolean }) => void) => void
         onJobSyncing?: (callback: (data: { index: number; message: string }) => void) => void
         onJobSkipped?: (callback: (data: { index: number; reason: string; existingUrl?: string }) => void) => void
+        onJobPrivacyWarning?: (callback: (data: { index: number; videoId: string; intendedPrivacy: string; actualPrivacy: string }) => void) => void
         forceUploadJob?: (job: any) => Promise<{ success: boolean; error?: string }>
         removeAllListeners: () => void
       }

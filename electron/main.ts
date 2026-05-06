@@ -474,6 +474,9 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
         youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
       })
 
+      // Check if YouTube silently forced the video to private (unverified API project)
+      checkPrivacyForcedPrivate(youtube, videoId!, job.privacy || 'unlisted', i).catch(() => {})
+
       // Delay between uploads
       if (i < uploadQueue.length - 1 && !cancelUpload) {
         await new Promise(resolve => setTimeout(resolve, delay))
@@ -600,6 +603,8 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
       videoId,
       youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
     })
+    // Check if YouTube silently forced the video to private (unverified API project)
+    checkPrivacyForcedPrivate(youtube, videoId!, job.privacy || 'unlisted', job._queueIndex || 0).catch(() => {})
   }
   try {
     await attemptSingle()
@@ -681,6 +686,8 @@ ipcMain.handle('upload:force-upload-job', async (event, job: any) => {
       videoId,
       youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
     })
+    // Check if YouTube silently forced the video to private (unverified API project)
+    checkPrivacyForcedPrivate(youtube, videoId!, job.privacy || 'unlisted', forceIndex).catch(() => {})
   }
   try {
     await attemptForce()
@@ -729,6 +736,35 @@ function addLog(level: LogEntry['level'], category: string, message: string, det
   if (appLogs.length > MAX_LOGS) appLogs.splice(MAX_LOGS)
   // Push to renderer in real-time
   mainWindow?.webContents.send('logs:new-entry', entry)
+}
+
+// ─── Post-Upload Privacy Check ───────────────────────────────────────────────
+// YouTube silently forces videos to 'private' when the API project has not
+// passed the YouTube Compliance Audit (required for all projects created after
+// July 28, 2020 that upload via videos.insert).
+async function checkPrivacyForcedPrivate(
+  youtube: any,
+  videoId: string,
+  intendedPrivacy: string,
+  jobIndex: number
+): Promise<void> {
+  try {
+    const res = await youtube.videos.list({ part: ['status'], id: [videoId] })
+    const actual = res?.data?.items?.[0]?.status?.privacyStatus
+    if (actual && actual === 'private' && intendedPrivacy !== 'private') {
+      addLog('warn', 'Upload',
+        `Video ${videoId} was forced to private by YouTube (unverified API project)`,
+        `Intended: ${intendedPrivacy} | Actual: private`)
+      mainWindow?.webContents.send('upload:privacy-warning', {
+        index: jobIndex,
+        videoId,
+        intendedPrivacy,
+        actualPrivacy: actual,
+      })
+    }
+  } catch (err: any) {
+    addLog('warn', 'Upload', `Could not verify privacy status for ${videoId}: ${err.message}`)
+  }
 }
 
 // Intercept console methods to capture all logs
