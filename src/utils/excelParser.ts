@@ -75,8 +75,11 @@ export function parseExcelFile(base64Data: string, videoFolder?: string): Upload
     .filter(row => col(row, 'filename', 'file_name', 'video_filename'))
     .map(row => {
       const filename = col(row, 'filename', 'file_name', 'video_filename')
-      const title = col(row, 'title', 'video_title') || filename
-      const description = col(row, 'description', 'desc', 'video_description')
+      // Default title = filename without extension
+      const filenameWithoutExt = filename ? filename.replace(/\.[^/.]+$/, '') : ''
+      const title = col(row, 'title', 'video_title') || filenameWithoutExt
+      // Default description = empty string
+      const description = col(row, 'description', 'desc', 'video_description') || ''
       const tags = col(row, 'tags', 'tag', 'keywords')
       const privacy = normalizePrivacy(col(row, 'privacy', 'privacy_status') || 'unlisted')
       const channelRaw = col(row, 'channel', 'channel_name', 'youtube_channel')
@@ -101,7 +104,7 @@ export function parseExcelFile(base64Data: string, videoFolder?: string): Upload
         filePath,
         fileName: filename,
         fileSize: 0,
-        title: title || filename,
+        title: title || filenameWithoutExt,
         description,
         tags,
         privacy,
@@ -140,8 +143,8 @@ export function generateExcelTemplate(): ArrayBuffer {
   const exampleRows = [
     {
       FILENAME: 'florida_medicare_16x9.mp4',
-      TITLE: 'Medicare Advantage Plans in Florida 2025',
-      DESCRIPTION: 'Learn about Medicare Advantage options available in Florida for 2025. Compare plans, benefits, and costs.',
+      TITLE: '',
+      DESCRIPTION: '',
       TAGS: 'medicare,florida,insurance,medicare advantage,2025',
       PRIVACY: 'unlisted',
       CHANNEL: '@MedicareCompared',
@@ -152,8 +155,8 @@ export function generateExcelTemplate(): ArrayBuffer {
     },
     {
       FILENAME: 'texas_medicare_9x16.mp4',
-      TITLE: 'Texas Medicare Supplement Plans 2025',
-      DESCRIPTION: 'Discover the best Medicare Supplement plans in Texas. Get expert guidance from Elite Insurance Partners.',
+      TITLE: '',
+      DESCRIPTION: '',
       TAGS: 'medicare,texas,insurance,medicare supplement,medigap',
       PRIVACY: 'unlisted',
       CHANNEL: '@eliteinsurancepartners',
@@ -164,8 +167,8 @@ export function generateExcelTemplate(): ArrayBuffer {
     },
     {
       FILENAME: 'california_health_1x1.mp4',
-      TITLE: 'Health Insurance Options in California',
-      DESCRIPTION: 'Explore health insurance options for California residents. Compare plans and find the best coverage.',
+      TITLE: '',
+      DESCRIPTION: '',
       TAGS: 'health insurance,california,coverage,plans',
       PRIVACY: 'unlisted',
       CHANNEL: '@HealthCompared',
@@ -240,8 +243,8 @@ export function generateExcelTemplate(): ArrayBuffer {
   // ── Instructions Sheet ─────────────────────────────────────────────────────
   const instructionsData = [
     { 'COLUMN': 'FILENAME', 'REQUIRED': 'YES', 'DESCRIPTION': 'Exact filename of the video file (e.g., florida_16x9.mp4)' },
-    { 'COLUMN': 'TITLE', 'REQUIRED': 'YES', 'DESCRIPTION': 'YouTube video title (max 100 characters)' },
-    { 'COLUMN': 'DESCRIPTION', 'REQUIRED': 'NO', 'DESCRIPTION': 'Video description (max 5000 characters)' },
+    { 'COLUMN': 'TITLE', 'REQUIRED': 'NO', 'DESCRIPTION': 'YouTube video title (max 100 characters). If blank, defaults to the filename without extension.' },
+    { 'COLUMN': 'DESCRIPTION', 'REQUIRED': 'NO', 'DESCRIPTION': 'Video description (max 5000 characters). If blank, no description is set.' },
     { 'COLUMN': 'TAGS', 'REQUIRED': 'NO', 'DESCRIPTION': 'Comma-separated tags (e.g., medicare,florida,insurance)' },
     { 'COLUMN': 'PRIVACY', 'REQUIRED': 'NO', 'DESCRIPTION': 'Privacy status: unlisted (default), private, or public' },
     { 'COLUMN': 'CHANNEL', 'REQUIRED': 'YES', 'DESCRIPTION': 'Channel handle from EIP Channels sheet (e.g., @MedicareCompared)' },

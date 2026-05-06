@@ -405,7 +405,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
           part: ['snippet', 'status'],
           requestBody: {
             snippet: {
-              title: job.title,
+              title: job.title || job.fileName.replace(/\.[^/.]+$/, ''),
               description: job.description || '',
               tags: job.tags ? job.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
               categoryId: job.categoryId || '22',
@@ -538,7 +538,7 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
         part: ['snippet', 'status'],
         requestBody: {
           snippet: {
-            title: job.title,
+            title: job.title || job.fileName.replace(/\.[^/.]+$/, ''),
             description: job.description || '',
             tags: job.tags ? job.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
             categoryId: job.categoryId || '22',
