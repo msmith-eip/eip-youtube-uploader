@@ -5,3 +5,8 @@ release/
 *.log
 .DS_Store
 Thumbs.db
+
+# OAuth credentials — never commit these
+resources/client_secrets.json
+client_secrets.json
+*.json.secret
