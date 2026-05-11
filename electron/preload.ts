@@ -85,6 +85,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onJobPrivacyWarning: (callback: (data: any) => void) => {
       ipcRenderer.on('upload:privacy-warning', (_, data) => callback(data))
     },
+    onDuplicateFound: (callback: (data: any) => void) => {
+      ipcRenderer.on('upload:duplicate-found', (_, data) => callback(data))
+    },
+    resolveDuplicate: (data: any) => ipcRenderer.invoke('upload:resolve-duplicate', data),
     retryJob: (job: any) => ipcRenderer.invoke('upload:retry-job', job),
     forceUploadJob: (job: any) => ipcRenderer.invoke('upload:force-upload-job', job),
     onAllComplete: (callback: (data: any) => void) => {
@@ -99,6 +103,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeAllListeners('upload:job-syncing')
       ipcRenderer.removeAllListeners('upload:job-skipped')
       ipcRenderer.removeAllListeners('upload:privacy-warning')
+      ipcRenderer.removeAllListeners('upload:duplicate-found')
       ipcRenderer.removeAllListeners('upload:all-complete')
     },
   },

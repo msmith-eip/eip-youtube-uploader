@@ -34,6 +34,9 @@ export interface UploadJob {
   existingUrl?: string
   forceUpload?: boolean
   privacyForcedPrivate?: boolean
+  language?: string
+  location?: string
+  duplicateResolution?: 'replace' | 'new' | 'skip'
   addedAt: string
 }
 
@@ -114,7 +117,9 @@ declare global {
         onJobSyncing?: (callback: (data: { index: number; message: string }) => void) => void
         onJobSkipped?: (callback: (data: { index: number; reason: string; existingUrl?: string }) => void) => void
         onJobPrivacyWarning?: (callback: (data: { index: number; videoId: string; intendedPrivacy: string; actualPrivacy: string }) => void) => void
+        onDuplicateFound?: (callback: (data: { index: number; fileName: string; existingUrl: string; existingTitle: string; uploadedAt: string }) => void) => void
         forceUploadJob?: (job: any) => Promise<{ success: boolean; error?: string }>
+        resolveDuplicate?: (data: { index: number; resolution: 'replace' | 'new' | 'skip' }) => Promise<void>
         removeAllListeners: () => void
       }
     }

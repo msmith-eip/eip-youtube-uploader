@@ -378,20 +378,43 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
     const job = uploadQueue[i]
 
     // ── Duplicate filename check ────────────────────────────────────────────
-    // Skip if this filename was already uploaded successfully (unless forceUpload flag is set)
+    // If this filename was already uploaded successfully, ask the user what to do
     if (!job.forceUpload) {
       const jobFileName = require('path').basename(job.filePath.trim())
       const duplicate = history.find(
         (h: any) => h.status === 'success' && h.filePath && require('path').basename(h.filePath) === jobFileName
       )
       if (duplicate) {
-        addLog('info', 'Upload', `Skipping duplicate: ${jobFileName} (already uploaded as ${duplicate.youtubeUrl})`)
-        mainWindow?.webContents.send('upload:job-skipped', {
+        addLog('info', 'Upload', `Duplicate found: ${jobFileName} — waiting for user resolution`)
+        // Emit event to renderer and wait for user's choice via IPC
+        mainWindow?.webContents.send('upload:duplicate-found', {
           index: i,
-          reason: `Already uploaded (${jobFileName})`,
+          fileName: jobFileName,
           existingUrl: duplicate.youtubeUrl,
+          existingTitle: duplicate.title || jobFileName,
+          uploadedAt: duplicate.uploadedAt,
         })
-        continue
+        // Wait for user to resolve (resolve-duplicate IPC invoke)
+        const resolution: string = await new Promise((resolve) => {
+          const handler = (_evt: any, data: any) => {
+            if (data.index === i) {
+              ipcMain.removeHandler('upload:resolve-duplicate')
+              resolve(data.resolution)
+            }
+          }
+          ipcMain.handleOnce('upload:resolve-duplicate', handler)
+        })
+        if (resolution === 'skip') {
+          addLog('info', 'Upload', `User skipped duplicate: ${jobFileName}`)
+          mainWindow?.webContents.send('upload:job-skipped', {
+            index: i,
+            reason: `Skipped by user (duplicate of ${jobFileName})`,
+            existingUrl: duplicate.youtubeUrl,
+          })
+          continue
+        }
+        // 'replace' or 'new' — both proceed with upload; 'replace' is just informational
+        addLog('info', 'Upload', `User chose '${resolution}' for duplicate: ${jobFileName} — proceeding with upload`)
       }
     }
 
@@ -428,12 +451,18 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
               tags: job.tags ? job.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
               categoryId: job.categoryId || '22',
               channelId: job.channelId || undefined,
+              defaultLanguage: job.language || 'en',
+              defaultAudioLanguage: job.language || 'en',
             },
             status: {
               privacyStatus: job.privacy || 'unlisted',
               // Per-job values from spreadsheet; defaults: not made for kids, contains synthetic media
               selfDeclaredMadeForKids: job.selfDeclaredMadeForKids ?? false,
               containsSyntheticMedia: job.containsSyntheticMedia ?? true,
+            } as any,
+            recordingDetails: {
+              recordingDate: new Date().toISOString().split('T')[0],
+              ...(job.location ? { locationDescription: job.location } : {}),
             } as any,
           },
           media: {

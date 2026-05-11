@@ -31,6 +31,13 @@ export default function UploadQueue() {
   const [excelBase64, setExcelBase64] = useState<string>('')
   const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
   const [showPrivacyWarning, setShowPrivacyWarning] = useState(false)
+  const [duplicateDialog, setDuplicateDialog] = useState<{
+    index: number
+    fileName: string
+    existingUrl: string
+    existingTitle: string
+    uploadedAt: string
+  } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
 
@@ -86,6 +93,9 @@ export default function UploadQueue() {
         i === index ? { ...job, privacyForcedPrivate: true } : job
       ))
       setShowPrivacyWarning(true)
+    })
+    ;(window.electronAPI.upload as any).onDuplicateFound?.((data: any) => {
+      setDuplicateDialog(data)
     })
 
     window.electronAPI.upload.onAllComplete(async () => {
@@ -553,6 +563,91 @@ export default function UploadQueue() {
                 </div>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Duplicate File Dialog ── */}
+      <AnimatePresence>
+        {duplicateDialog && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md mx-4 rounded-2xl border border-dark-700 bg-dark-900 shadow-2xl overflow-hidden"
+            >
+              <div className="px-6 pt-6 pb-4">
+                <div className="flex items-start gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-yellow-500/15 border border-yellow-500/30 flex items-center justify-center flex-shrink-0">
+                    <AlertCircle size={20} className="text-yellow-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-dark-50">Duplicate Video Found</h3>
+                    <p className="text-xs text-dark-400 mt-0.5">This file was already uploaded to YouTube.</p>
+                  </div>
+                </div>
+                <div className="rounded-xl bg-dark-800 border border-dark-700 px-4 py-3 mb-5">
+                  <p className="text-xs text-dark-400 mb-1">File</p>
+                  <p className="text-sm font-medium text-dark-100 truncate">{duplicateDialog.fileName}</p>
+                  <p className="text-xs text-dark-400 mt-2 mb-1">Previously uploaded as</p>
+                  <p className="text-sm text-dark-200 truncate">{duplicateDialog.existingTitle}</p>
+                  <a
+                    href={duplicateDialog.existingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 mt-1 transition-colors"
+                  >
+                    <ExternalLink size={11} />
+                    View on YouTube
+                  </a>
+                  <p className="text-xs text-dark-500 mt-2">
+                    Uploaded {new Date(duplicateDialog.uploadedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </p>
+                </div>
+                <p className="text-sm text-dark-300 mb-4">What would you like to do?</p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={async () => {
+                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'new' })
+                      setDuplicateDialog(null)
+                    }}
+                    className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors text-left flex items-start gap-3"
+                  >
+                    <div>
+                      <div>Upload as New Version</div>
+                      <div className="text-xs font-normal text-blue-200 mt-0.5">Upload again — both videos will exist on YouTube</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'replace' })
+                      setDuplicateDialog(null)
+                    }}
+                    className="w-full px-4 py-3 rounded-xl bg-dark-700 hover:bg-dark-600 text-dark-100 text-sm font-semibold transition-colors text-left flex items-start gap-3 border border-dark-600"
+                  >
+                    <div>
+                      <div>Replace (Re-upload)</div>
+                      <div className="text-xs font-normal text-dark-400 mt-0.5">Upload again — the old video stays, this creates a new one with the same name</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'skip' })
+                      setDuplicateDialog(null)
+                    }}
+                    className="w-full px-4 py-3 rounded-xl bg-dark-800 hover:bg-dark-700 text-dark-400 text-sm font-medium transition-colors border border-dark-700"
+                  >
+                    Skip this video
+                  </button>
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

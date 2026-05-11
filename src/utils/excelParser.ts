@@ -99,6 +99,8 @@ export function parseExcelFile(base64Data: string, videoFolder?: string): Upload
       // New optional columns — default to safe values when absent
       const madeForKidsRaw = parseBool(row, 'made_for_kids', 'madeForKids', 'made for kids', 'kids')
       const syntheticMediaRaw = parseBool(row, 'contains_synthetic_media', 'containsSyntheticMedia', 'synthetic_media', 'synthetic media', 'ai content')
+      const language = col(row, 'language', 'lang', 'audio_language', 'default_language') || 'en'
+      const location = col(row, 'location', 'recording_location', 'city', 'place') || ''
       return {
         id: uuidv4(),
         filePath,
@@ -114,6 +116,8 @@ export function parseExcelFile(base64Data: string, videoFolder?: string): Upload
         // Default: NOT made for kids, YES contains synthetic/AI media
         selfDeclaredMadeForKids: madeForKidsRaw ?? false,
         containsSyntheticMedia: syntheticMediaRaw ?? true,
+        language,
+        location,
         status: 'pending' as const,
         progress: 0,
         bytesUploaded: 0,
@@ -137,7 +141,7 @@ export function generateExcelTemplate(): ArrayBuffer {
   // Column headers are ALL CAPS
   const uploadHeaders = [
     'FILENAME', 'TITLE', 'DESCRIPTION', 'TAGS', 'PRIVACY', 'CHANNEL', 'CHANNEL_ID',
-    'CATEGORY_ID', 'MADE_FOR_KIDS', 'CONTAINS_SYNTHETIC_MEDIA',
+    'CATEGORY_ID', 'MADE_FOR_KIDS', 'CONTAINS_SYNTHETIC_MEDIA', 'LANGUAGE', 'LOCATION',
   ]
 
   const exampleRows = [
@@ -152,6 +156,8 @@ export function generateExcelTemplate(): ArrayBuffer {
       CATEGORY_ID: '22',
       MADE_FOR_KIDS: 'NO',
       CONTAINS_SYNTHETIC_MEDIA: 'YES',
+      LANGUAGE: 'en',
+      LOCATION: '',
     },
     {
       FILENAME: 'texas_medicare_9x16.mp4',
@@ -164,6 +170,8 @@ export function generateExcelTemplate(): ArrayBuffer {
       CATEGORY_ID: '22',
       MADE_FOR_KIDS: 'NO',
       CONTAINS_SYNTHETIC_MEDIA: 'YES',
+      LANGUAGE: 'en',
+      LOCATION: '',
     },
     {
       FILENAME: 'california_health_1x1.mp4',
@@ -176,6 +184,8 @@ export function generateExcelTemplate(): ArrayBuffer {
       CATEGORY_ID: '22',
       MADE_FOR_KIDS: 'NO',
       CONTAINS_SYNTHETIC_MEDIA: 'YES',
+      LANGUAGE: 'en',
+      LOCATION: '',
     },
   ]
 
@@ -206,6 +216,8 @@ export function generateExcelTemplate(): ArrayBuffer {
     { wch: 15 }, // CATEGORY_ID
     { wch: 18 }, // MADE_FOR_KIDS
     { wch: 28 }, // CONTAINS_SYNTHETIC_MEDIA
+    { wch: 12 }, // LANGUAGE
+    { wch: 35 }, // LOCATION
   ]
 
   XLSX.utils.book_append_sheet(workbook, uploadSheet, 'Upload Queue')
