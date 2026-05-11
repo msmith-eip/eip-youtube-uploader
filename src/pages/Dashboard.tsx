@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  Upload, CheckCircle, AlertCircle, Clock, Youtube,
+  Upload, CheckCircle, AlertCircle, Clock, Video,
   TrendingUp, Play, ExternalLink, RefreshCw, ChevronRight,
   Tv, Users
 } from 'lucide-react'
@@ -203,8 +203,7 @@ export default function Dashboard() {
         >
           <div className="card h-full">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-dark-100 flex items-center gap-2">
-                <Youtube size={14} className="text-accent-red" />
+              <h3 className="text-sm font-semibold text-dark-100">
                 Connected Channels
               </h3>
               <button
@@ -331,7 +330,7 @@ export default function Dashboard() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-600 to-accent-purple flex items-center justify-center">
-              <Youtube size={16} className="text-white" />
+              <Video size={16} className="text-white" />
             </div>
             <div>
               <div className="text-sm font-semibold text-dark-100">EIP Brand Channels</div>
