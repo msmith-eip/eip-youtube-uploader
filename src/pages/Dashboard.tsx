@@ -88,7 +88,7 @@ export default function Dashboard() {
           Welcome back{auth.email ? `, ${auth.email.split('@')[0]}` : ''}
         </h1>
         <p className="text-dark-400 text-sm mt-1">
-          Manage your YouTube bulk uploads for Elite Insurance Partners
+          Manage your video bulk uploads for Elite Insurance Partners
         </p>
       </motion.div>
 
