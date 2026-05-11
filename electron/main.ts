@@ -6,6 +6,7 @@ import { OAuth2Client } from 'google-auth-library'
 import Store from 'electron-store'
 import { Readable } from 'stream'
 import { autoUpdater } from 'electron-updater'
+import { CLIENT_ID, CLIENT_SECRET } from './oauth.config'
 
 const isDev = process.env.NODE_ENV === 'development'
 
@@ -83,8 +84,6 @@ const store = new Store({
 })
 
 // ─── OAuth2 Setup ─────────────────────────────────────────────────────────────
-const CLIENT_ID = '786706448902-dom0puc1echgcvgg2ng5qiabsg6khivd.apps.googleusercontent.com'
-const CLIENT_SECRET = 'REDACTED_SEE_OAUTH_CONFIG'
 const REDIRECT_URI = 'http://localhost:8765'
 
 let oauth2Client: OAuth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI)
