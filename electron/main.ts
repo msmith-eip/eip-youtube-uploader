@@ -815,7 +815,7 @@ ipcMain.handle('logs:export', async () => {
 })
 
 // Log app startup
-addLog('info', 'App', `EIP YouTube Uploader started — v${app.getVersion()}`, `Platform: ${process.platform} | Electron: ${process.versions.electron} | Node: ${process.versions.node}`)
+addLog('info', 'App', `EIP Video Uploader started — v${app.getVersion()}`, `Platform: ${process.platform} | Electron: ${process.versions.electron} | Node: ${process.versions.node}`)
 
 // ─── Auto Updater ─────────────────────────────────────────────────────────────
 autoUpdater.autoDownload = false       // User must click "Download Update"

@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Youtube, Shield, Zap, Upload, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { Video, Shield, Zap, Upload, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 import { useApp } from '../App'
 
 export default function AuthScreen() {
@@ -64,7 +64,7 @@ export default function AuthScreen() {
             transition={{ delay: 0.1, duration: 0.5 }}
             className="w-20 h-20 rounded-2xl bg-gradient-to-br from-brand-600 to-accent-purple flex items-center justify-center shadow-glow mb-6"
           >
-            <Youtube size={36} className="text-white" />
+            <Video size={36} className="text-white" />
           </motion.div>
 
           <motion.h1
@@ -73,7 +73,7 @@ export default function AuthScreen() {
             transition={{ delay: 0.2 }}
             className="text-3xl font-bold text-dark-50 mb-2"
           >
-            EIP YouTube Uploader
+            EIP Video Uploader
           </motion.h1>
 
           <motion.p
@@ -82,7 +82,7 @@ export default function AuthScreen() {
             transition={{ delay: 0.3 }}
             className="text-dark-400 text-sm mb-8 leading-relaxed"
           >
-            Elite Insurance Partners' bulk video upload platform for YouTube brand channels.
+            Elite Insurance Partners' bulk video upload platform for brand channels.
             Upload hundreds of state-specific ad creatives with ease.
           </motion.p>
 

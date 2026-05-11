@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Upload, History, Settings, LogOut,
-  Youtube, ChevronRight, Wifi, Terminal,
+  Video, ChevronRight, Wifi, Terminal,
   Download, RefreshCw, Sparkles, X, ArrowDownToLine
 } from 'lucide-react'
 import { useApp } from '../App'
@@ -90,11 +90,11 @@ export default function Layout({ children }: LayoutProps) {
         <div className="titlebar-drag h-10 flex items-center px-4 border-b border-dark-700 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-brand-600 to-accent-purple flex items-center justify-center shadow-glow-sm flex-shrink-0">
-              <Youtube size={14} className="text-white" />
+              <Video size={14} className="text-white" />
             </div>
             <div>
               <div className="text-xs font-bold text-dark-50 leading-tight">EIP Uploader</div>
-              <div className="text-[10px] text-dark-400 leading-tight">YouTube Bulk Upload</div>
+              <div className="text-[10px] text-dark-400 leading-tight">Bulk Video Upload</div>
             </div>
           </div>
         </div>
@@ -288,7 +288,7 @@ export default function Layout({ children }: LayoutProps) {
         <div className="flex-shrink-0">
           <div className="titlebar-drag h-10 bg-dark-950 border-b border-dark-800 flex items-center px-4">
             <span className="text-xs text-dark-500 font-medium">
-              {navItems.find(n => n.path === location.pathname)?.label || 'EIP YouTube Uploader'}
+              {navItems.find(n => n.path === location.pathname)?.label || 'EIP Video Uploader'}
             </span>
           </div>
 
