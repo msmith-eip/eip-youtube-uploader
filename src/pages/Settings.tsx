@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
-  Settings as SettingsIcon, Save, Shield, Zap, Clock,
+  Settings as SettingsIcon, Save, Shield, Clock,
   Youtube, Info, CheckCircle, RefreshCw, LogOut
 } from 'lucide-react'
 import { useApp } from '../App'

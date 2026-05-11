@@ -971,3 +971,98 @@ ipcMain.handle('fs:overwrite-file', async (_event, { filePath, data }: { filePat
     return { success: false, error: err.message }
   }
 })
+
+// IPC: Fetch all videos from all connected channels and export to Excel
+ipcMain.handle('youtube:export-all-videos', async () => {
+  try {
+    const tokens = store.get('tokens') as any
+    if (!tokens) return { success: false, error: 'Not authenticated' }
+    oauth2Client.setCredentials(tokens)
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
+
+    // Step 1: Get all channels the user manages
+    addLog('info', 'Export', 'Fetching channel list...')
+    const channelsResp = await youtube.channels.list({
+      part: ['snippet', 'contentDetails'],
+      mine: true,
+      maxResults: 50,
+    })
+    const channels = channelsResp.data.items || []
+    if (channels.length === 0) return { success: false, error: 'No channels found' }
+
+    addLog('info', 'Export', `Found ${channels.length} channel(s). Fetching videos...`)
+
+    // Step 2: For each channel, page through all videos via the uploads playlist
+    const allVideos: any[] = []
+    for (const channel of channels) {
+      const channelName = channel.snippet?.title || 'Unknown Channel'
+      const channelId = channel.id || ''
+      const uploadsPlaylistId = channel.contentDetails?.relatedPlaylists?.uploads
+      if (!uploadsPlaylistId) continue
+
+      addLog('info', 'Export', `Fetching videos for: ${channelName}`)
+      let pageToken: string | undefined = undefined
+      let pageCount = 0
+
+      do {
+        const playlistResp: any = await youtube.playlistItems.list({
+          part: ['snippet', 'contentDetails'],
+          playlistId: uploadsPlaylistId,
+          maxResults: 50,
+          pageToken: pageToken || undefined,
+        })
+        const items = playlistResp.data.items || []
+
+        // Batch fetch video details (privacy, duration) — up to 50 at a time
+        const videoIds = items.map((item: any) => item.contentDetails?.videoId).filter(Boolean)
+        let videoDetails: Map<string, any> = new Map()
+        if (videoIds.length > 0) {
+          const detailsResp = await youtube.videos.list({
+            part: ['snippet', 'status', 'contentDetails'],
+            id: videoIds,
+            maxResults: 50,
+          })
+          for (const v of (detailsResp.data.items || [])) {
+            if (v.id) videoDetails.set(v.id, v)
+          }
+        }
+
+        for (const item of items) {
+          const videoId = item.contentDetails?.videoId
+          if (!videoId) continue
+          const detail = videoDetails.get(videoId)
+          const snippet = detail?.snippet || item.snippet || {}
+          allVideos.push({
+            channelName,
+            channelId,
+            videoId,
+            title: snippet.title || '',
+            url: `https://www.youtube.com/watch?v=${videoId}`,
+            privacy: detail?.status?.privacyStatus || '',
+            publishedAt: snippet.publishedAt || '',
+            description: (snippet.description || '').substring(0, 500),
+            duration: detail?.contentDetails?.duration || '',
+            tags: (snippet.tags || []).join(', '),
+          })
+        }
+
+        pageToken = playlistResp.data.nextPageToken || undefined
+        pageCount++
+        // Safety: max 200 pages per channel (10,000 videos)
+        if (pageCount >= 200) break
+      } while (pageToken)
+
+      addLog('info', 'Export', `  → ${channelName}: fetched videos so far, total: ${allVideos.length}`)
+    }
+
+    addLog('success', 'Export', `Total videos fetched: ${allVideos.length}. Building Excel...`)
+
+    // Step 3: Build Excel workbook using ExcelJS (already a dependency via xlsx)
+    // We'll use the xlsx library since it's already bundled
+    // Return the data to the renderer to build the Excel file there
+    return { success: true, videos: allVideos }
+  } catch (err: any) {
+    addLog('error', 'Export', `Failed to export videos: ${err.message}`)
+    return { success: false, error: err.message }
+  }
+})

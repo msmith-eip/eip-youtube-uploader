@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // YouTube
   youtube: {
     getChannels: () => ipcRenderer.invoke('youtube:get-channels'),
+    exportAllVideos: () => ipcRenderer.invoke('youtube:export-all-videos'),
   },
 
   // Dialogs

@@ -106,7 +106,7 @@ export default function App() {
     const unsub = window.electronAPI.upload.onAllComplete(() => {
       setIsUploading(false)
     })
-    return () => { if (typeof unsub === 'function') unsub() }
+    return () => { if (typeof (unsub as any) === 'function') (unsub as any)() }
   }, [])
 
   // Safety net: if all jobs are done (complete or error) but isUploading is still true, clear it

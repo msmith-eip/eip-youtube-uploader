@@ -1,22 +1,31 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Upload, CheckCircle, AlertCircle, Clock, Video,
   TrendingUp, Play, ExternalLink, RefreshCw, ChevronRight,
-  Tv, Users
+  Tv, Users, Download, Loader2
 } from 'lucide-react'
 import { useApp } from '../App'
 import type { UploadHistory } from '../types'
+import * as XLSX from 'xlsx'
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const { auth, channels, uploadJobs, isUploading, refreshChannels } = useApp()
   const [history, setHistory] = useState<UploadHistory[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [exportingVideos, setExportingVideos] = useState(false)
+  const [exportStatus, setExportStatus] = useState<string>('')
+  const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
 
   useEffect(() => {
     loadHistory()
+  }, [])
+
+  const showToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
+    setToast({ type, message })
+    setTimeout(() => setToast(null), 5000)
   }, [])
 
   const loadHistory = async () => {
@@ -28,6 +37,119 @@ export default function Dashboard() {
       }
     } finally {
       setLoadingHistory(false)
+    }
+  }
+
+  const handleExportChannelVideos = async () => {
+    if (!window.electronAPI) return
+    setExportingVideos(true)
+    setExportStatus('Connecting to YouTube...')
+    try {
+      const result = await window.electronAPI.youtube.exportAllVideos()
+      if (!result.success || !result.videos) {
+        showToast('error', result.error || 'Failed to fetch videos')
+        return
+      }
+
+      const videos = result.videos
+      setExportStatus(`Building Excel file (${videos.length} videos)...`)
+
+      // Build workbook
+      const workbook = XLSX.utils.book_new()
+
+      // ── All Videos Sheet ──────────────────────────────────────────────────────
+      const rows = videos.map((v: any) => ({
+        'CHANNEL': v.channelName,
+        'TITLE': v.title,
+        'YOUTUBE_URL': v.url,
+        'PRIVACY': v.privacy,
+        'PUBLISHED_DATE': v.publishedAt ? new Date(v.publishedAt).toLocaleDateString() : '',
+        'VIDEO_ID': v.videoId,
+        'TAGS': v.tags,
+        'DESCRIPTION': v.description,
+      }))
+
+      const sheet = XLSX.utils.json_to_sheet(rows, {
+        header: ['CHANNEL', 'TITLE', 'YOUTUBE_URL', 'PRIVACY', 'PUBLISHED_DATE', 'VIDEO_ID', 'TAGS', 'DESCRIPTION'],
+      })
+
+      // Bold header row
+      const headers = ['CHANNEL', 'TITLE', 'YOUTUBE_URL', 'PRIVACY', 'PUBLISHED_DATE', 'VIDEO_ID', 'TAGS', 'DESCRIPTION']
+      headers.forEach((_, colIdx) => {
+        const cellAddr = XLSX.utils.encode_cell({ r: 0, c: colIdx })
+        if (!sheet[cellAddr]) return
+        sheet[cellAddr].s = {
+          font: { bold: true, sz: 11 },
+          alignment: { horizontal: 'center', vertical: 'center' },
+        }
+      })
+
+      // Freeze header row
+      sheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft' }
+
+      // Column widths
+      sheet['!cols'] = [
+        { wch: 30 }, // CHANNEL
+        { wch: 60 }, // TITLE
+        { wch: 45 }, // YOUTUBE_URL
+        { wch: 12 }, // PRIVACY
+        { wch: 16 }, // PUBLISHED_DATE
+        { wch: 16 }, // VIDEO_ID
+        { wch: 50 }, // TAGS
+        { wch: 80 }, // DESCRIPTION
+      ]
+
+      XLSX.utils.book_append_sheet(workbook, sheet, 'All Videos')
+
+      // ── Per-Channel Sheets ─────────────────────────────────────────────────────
+      const channelGroups = new Map<string, any[]>()
+      for (const v of videos) {
+        const key = v.channelName
+        if (!channelGroups.has(key)) channelGroups.set(key, [])
+        channelGroups.get(key)!.push(v)
+      }
+
+      for (const [channelName, channelVideos] of channelGroups) {
+        const channelRows = channelVideos.map((v: any) => ({
+          'TITLE': v.title,
+          'YOUTUBE_URL': v.url,
+          'PRIVACY': v.privacy,
+          'PUBLISHED_DATE': v.publishedAt ? new Date(v.publishedAt).toLocaleDateString() : '',
+          'VIDEO_ID': v.videoId,
+          'TAGS': v.tags,
+        }))
+        const channelSheet = XLSX.utils.json_to_sheet(channelRows, {
+          header: ['TITLE', 'YOUTUBE_URL', 'PRIVACY', 'PUBLISHED_DATE', 'VIDEO_ID', 'TAGS'],
+        })
+        channelSheet['!cols'] = [
+          { wch: 60 }, { wch: 45 }, { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 50 },
+        ]
+        // Sanitize sheet name (max 31 chars, no special chars)
+        const safeName = channelName.replace(/[\\/*?[\]:]/g, '').substring(0, 31)
+        XLSX.utils.book_append_sheet(workbook, channelSheet, safeName)
+      }
+
+      // Write to ArrayBuffer and save via Electron dialog
+      const arrayBuffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx', cellStyles: true })
+      const data = Array.from(new Uint8Array(arrayBuffer))
+      const today = new Date().toISOString().split('T')[0]
+      const saveResult = await (window.electronAPI.fs as any).saveFile({
+        defaultPath: `EIP_Channel_Videos_${today}.xlsx`,
+        data,
+      })
+
+      if (saveResult.canceled) {
+        showToast('info', 'Export cancelled')
+      } else if (saveResult.success) {
+        showToast('success', `Exported ${videos.length} videos to Excel successfully!`)
+      } else {
+        showToast('error', saveResult.error || 'Failed to save file')
+      }
+    } catch (err: any) {
+      showToast('error', `Export failed: ${err.message}`)
+    } finally {
+      setExportingVideos(false)
+      setExportStatus('')
     }
   }
 
@@ -78,6 +200,24 @@ export default function Dashboard() {
 
   return (
     <div className="p-6 h-full overflow-auto">
+      {/* Toast */}
+      {toast && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          className={`fixed top-12 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 ${
+            toast.type === 'success' ? 'bg-accent-green/20 border border-accent-green/40 text-accent-green' :
+            toast.type === 'error' ? 'bg-red-500/20 border border-red-500/40 text-red-400' :
+            'bg-brand-600/20 border border-brand-600/40 text-brand-400'
+          }`}
+        >
+          {toast.type === 'success' && <CheckCircle size={14} />}
+          {toast.type === 'error' && <AlertCircle size={14} />}
+          {toast.message}
+        </motion.div>
+      )}
+
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
@@ -154,7 +294,7 @@ export default function Dashboard() {
                 onClick={() => navigate('/history')}
                 className="btn-secondary justify-start"
               >
-                <History size={16} />
+                <HistoryIcon size={16} />
                 <span className="text-sm">View Upload History</span>
               </button>
 
@@ -164,6 +304,22 @@ export default function Dashboard() {
               >
                 <RefreshCw size={16} />
                 <span className="text-sm">Refresh Channels</span>
+              </button>
+
+              {/* Export Channel Videos button */}
+              <button
+                onClick={handleExportChannelVideos}
+                disabled={exportingVideos}
+                className="btn-secondary justify-start disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {exportingVideos ? (
+                  <Loader2 size={16} className="animate-spin text-brand-400" />
+                ) : (
+                  <Download size={16} />
+                )}
+                <span className="text-sm">
+                  {exportingVideos ? (exportStatus || 'Exporting...') : 'Export Channel Videos'}
+                </span>
               </button>
             </div>
 
@@ -351,7 +507,7 @@ export default function Dashboard() {
   )
 }
 
-// Missing imports fix
+// ── Local icon helpers ────────────────────────────────────────────────────────
 function Zap({ size, className }: { size: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -372,7 +528,7 @@ function FileSpreadsheet({ size, className }: { size: number; className?: string
   )
 }
 
-function History({ size, className }: { size: number; className?: string }) {
+function HistoryIcon({ size, className }: { size: number; className?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <path d="M3 3v5h5"/>

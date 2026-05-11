@@ -30,6 +30,7 @@ export interface UploadJob {
   videoId?: string
   youtubeUrl?: string
   error?: string
+  canRetry?: boolean
   skipReason?: string
   existingUrl?: string
   forceUpload?: boolean
@@ -85,6 +86,7 @@ declare global {
       }
       youtube: {
         getChannels: () => Promise<{ success: boolean; channels?: Channel[]; error?: string }>
+        exportAllVideos: () => Promise<{ success: boolean; videos?: any[]; error?: string }>
       }
       dialog: {
         openVideos: () => Promise<{ canceled: boolean; filePaths: string[] }>
@@ -96,6 +98,8 @@ declare global {
         readFile: (filePath: string) => Promise<{ success: boolean; data?: string; error?: string }>
         getFileInfo: (filePath: string) => Promise<{ success: boolean; size?: number; name?: string; error?: string }>
         listFolder: (folderPath: string) => Promise<{ success: boolean; files?: { name: string; path: string; size: number }[]; error?: string }>
+        saveFile: (opts: { defaultPath: string; data: number[] }) => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>
+        overwriteFile: (opts: { filePath: string; data: number[] }) => Promise<{ success: boolean; error?: string }>
       }
       settings: {
         get: () => Promise<AppSettings>
@@ -112,15 +116,29 @@ declare global {
         onJobStart: (callback: (data: { index: number; job: UploadJob }) => void) => void
         onProgress: (callback: (data: { index: number; progress: number; bytesUploaded: number; totalBytes: number }) => void) => void
         onJobComplete: (callback: (data: { index: number; videoId: string; youtubeUrl: string }) => void) => void
-        onJobError: (callback: (data: { index: number; error: string }) => void) => void
+        onJobError: (callback: (data: { index: number; error: string; canRetry?: boolean }) => void) => void
         onAllComplete: (callback: (data: { total: number; cancelled: boolean }) => void) => void
         onJobSyncing?: (callback: (data: { index: number; message: string }) => void) => void
+        onJobRetrying?: (callback: (data: { index: number; attempt: number; error: string }) => void) => void
         onJobSkipped?: (callback: (data: { index: number; reason: string; existingUrl?: string }) => void) => void
         onJobPrivacyWarning?: (callback: (data: { index: number; videoId: string; intendedPrivacy: string; actualPrivacy: string }) => void) => void
         onDuplicateFound?: (callback: (data: { index: number; fileName: string; existingUrl: string; existingTitle: string; uploadedAt: string }) => void) => void
         forceUploadJob?: (job: any) => Promise<{ success: boolean; error?: string }>
         resolveDuplicate?: (data: { index: number; resolution: 'replace' | 'new' | 'skip' }) => Promise<void>
         removeAllListeners: () => void
+      }
+      updater: {
+        check: () => Promise<any>
+        download: () => Promise<any>
+        install: () => Promise<any>
+        getVersion: () => Promise<{ version: string }>
+        onChecking: (cb: () => void) => void
+        onAvailable: (cb: (info: any) => void) => void
+        onNotAvailable: (cb: (info: any) => void) => void
+        onDownloadProgress: (cb: (progress: any) => void) => void
+        onDownloaded: (cb: (info: any) => void) => void
+        onError: (cb: (err: any) => void) => void
+        removeListeners: () => void
       }
     }
   }
