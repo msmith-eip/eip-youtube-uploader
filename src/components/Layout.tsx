@@ -34,9 +34,14 @@ export default function Layout({ children }: LayoutProps) {
   >('idle')
   const [updateInfo, setUpdateInfo] = useState<{ version?: string; percent?: number } | null>(null)
   const [showUpdateBanner, setShowUpdateBanner] = useState(false)
+  const [currentVersion, setCurrentVersion] = useState<string>('')
 
   useEffect(() => {
     if (!window.electronAPI?.updater) return
+    // Fetch current app version for display
+    ;(window.electronAPI as any).updater.getVersion?.().then((res: any) => {
+      if (res?.version) setCurrentVersion(res.version)
+    }).catch(() => {})
     const api = (window.electronAPI as any).updater
     api.onChecking(() => setUpdateState('checking'))
     api.onAvailable((info: any) => {
@@ -267,6 +272,9 @@ export default function Layout({ children }: LayoutProps) {
               </motion.div>
               {updateState === 'checking' ? 'Checking for updates...' : 'Check for updates'}
             </button>
+          )}
+          {currentVersion && (
+            <p className="text-center text-[9px] text-dark-600 mt-0.5 mb-1">v{currentVersion}</p>
           )}
         </div>
 

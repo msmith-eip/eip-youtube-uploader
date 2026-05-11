@@ -40,6 +40,9 @@ export default function UploadQueue() {
   } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
+  // Refs so the IPC closure always has the latest Excel state
+  const excelFilePathRef = useRef<string>('')
+  const excelBase64Ref = useRef<string>('')
 
   const showToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
     setToast({ type, message })
@@ -103,7 +106,9 @@ export default function UploadQueue() {
       // Write back upload results to the original Excel file
       setUploadJobs(currentJobs => {
         const doWriteBack = async (jobs: typeof currentJobs) => {
-          if (!excelBase64 || !excelFilePath || !window.electronAPI) return
+          const _base64 = excelBase64Ref.current
+          const _path = excelFilePathRef.current
+          if (!_base64 || !_path || !window.electronAPI) return
           try {
             const results = jobs.map(j => ({
               filename: j.filePath || j.fileName,
@@ -113,16 +118,16 @@ export default function UploadQueue() {
               error: j.error,
               uploadedAt: new Date().toISOString(),
             }))
-            const updatedBuffer = writeBackToExcel(excelBase64, results)
+            const updatedBuffer = writeBackToExcel(_base64, results)
             const dataArray = Array.from(new Uint8Array(updatedBuffer))
             // Try to overwrite in-place first, fall back to Save As dialog
-            const overwriteResult = await window.electronAPI!.fs.overwriteFile({ filePath: excelFilePath, data: dataArray })
+            const overwriteResult = await window.electronAPI!.fs.overwriteFile({ filePath: _path, data: dataArray })
             if (overwriteResult.success) {
               showToast('success', 'Excel updated with upload results ✓')
             } else {
               // Fall back to Save As
               await window.electronAPI!.fs.saveFile({
-                defaultPath: excelFilePath.replace(/\.[^.]+$/, '_results.xlsx'),
+                defaultPath: _path.replace(/\.[^.]+$/, '_results.xlsx'),
                 data: dataArray,
               })
               showToast('success', 'Upload results saved to Excel ✓')
@@ -239,7 +244,9 @@ export default function UploadQueue() {
       })
       setUploadJobs(prev => [...prev, ...enriched])
       setExcelFilePath(filePath)
+      excelFilePathRef.current = filePath
       setExcelBase64(fileResult.data)
+      excelBase64Ref.current = fileResult.data
       showToast('success', `Imported ${enriched.length} video${enriched.length !== 1 ? 's' : ''} from Excel`)
     } catch (err: any) {
       showToast('error', `Excel import failed: ${err.message}`)

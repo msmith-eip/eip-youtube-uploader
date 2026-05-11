@@ -525,6 +525,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
       } catch (err2: any) {
         // Both attempts failed - mark as error with retry button
         const errMsg = err2.message || 'Upload failed after retry'
+        addLog('error', 'Upload', `Failed: ${job.fileName || job.filePath}`, errMsg)
         mainWindow?.webContents.send('upload:job-error', {
           index: i,
           error: errMsg,
@@ -638,8 +639,9 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
     await attemptSingle()
     return { success: true }
   } catch (err: any) {
+    addLog('error', 'Upload', `Retry failed: ${job.fileName || job.filePath}`, err.message || 'Retry failed')
     mainWindow?.webContents.send('upload:job-error', {
-      index: job._queueIndex || 0,
+      index: job._queueIndex,
       error: err.message || 'Retry failed',
       canRetry: true,
     })
@@ -650,13 +652,13 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
 // Force-upload a previously skipped job (bypasses duplicate check)
 ipcMain.handle('upload:force-upload-job', async (event, job: any) => {
   // Reuse the retry handler logic — same flow, just with forceUpload semantics
-  mainWindow?.webContents.send('upload:job-start', { index: job._queueIndex || 0, job })
+  const forceIndex = job._queueIndex || 0
+  mainWindow?.webContents.send('upload:job-start', { index: forceIndex, job })
   const attemptForce = async (): Promise<void> => {
     const tokens = store.get('tokens') as any
     if (tokens) oauth2Client.setCredentials(tokens)
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
     const normalizedPath = job.filePath.trim()
-    const forceIndex = job._queueIndex || 0
     if (isOneDrivePlaceholder(normalizedPath)) {
       mainWindow?.webContents.send('upload:job-syncing', { index: forceIndex, message: 'Syncing from OneDrive...' })
       await hydrateOneDriveFile(normalizedPath, (msg) => {
@@ -721,8 +723,9 @@ ipcMain.handle('upload:force-upload-job', async (event, job: any) => {
     await attemptForce()
     return { success: true }
   } catch (err: any) {
+    addLog('error', 'Upload', `Force upload failed: ${job.fileName || job.filePath}`, err.message || 'Force upload failed')
     mainWindow?.webContents.send('upload:job-error', {
-      index: job._queueIndex || 0,
+      index: forceIndex,
       error: err.message || 'Force upload failed',
       canRetry: true,
     })
