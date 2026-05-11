@@ -142,6 +142,7 @@ export function generateExcelTemplate(): ArrayBuffer {
   const uploadHeaders = [
     'FILENAME', 'TITLE', 'DESCRIPTION', 'TAGS', 'PRIVACY', 'CHANNEL', 'CHANNEL_ID',
     'CATEGORY_ID', 'MADE_FOR_KIDS', 'CONTAINS_SYNTHETIC_MEDIA', 'LANGUAGE', 'LOCATION',
+    'YOUTUBE_URL', 'UPLOAD_STATUS',
   ]
 
   const exampleRows = [
@@ -158,6 +159,8 @@ export function generateExcelTemplate(): ArrayBuffer {
       CONTAINS_SYNTHETIC_MEDIA: 'YES',
       LANGUAGE: 'en',
       LOCATION: '',
+      YOUTUBE_URL: '',
+      UPLOAD_STATUS: '',
     },
     {
       FILENAME: 'texas_medicare_9x16.mp4',
@@ -172,6 +175,8 @@ export function generateExcelTemplate(): ArrayBuffer {
       CONTAINS_SYNTHETIC_MEDIA: 'YES',
       LANGUAGE: 'en',
       LOCATION: '',
+      YOUTUBE_URL: '',
+      UPLOAD_STATUS: '',
     },
     {
       FILENAME: 'california_health_1x1.mp4',
@@ -186,6 +191,8 @@ export function generateExcelTemplate(): ArrayBuffer {
       CONTAINS_SYNTHETIC_MEDIA: 'YES',
       LANGUAGE: 'en',
       LOCATION: '',
+      YOUTUBE_URL: '',
+      UPLOAD_STATUS: '',
     },
   ]
 
@@ -218,6 +225,8 @@ export function generateExcelTemplate(): ArrayBuffer {
     { wch: 28 }, // CONTAINS_SYNTHETIC_MEDIA
     { wch: 12 }, // LANGUAGE
     { wch: 35 }, // LOCATION
+    { wch: 45 }, // YOUTUBE_URL
+    { wch: 18 }, // UPLOAD_STATUS
   ]
 
   XLSX.utils.book_append_sheet(workbook, uploadSheet, 'Upload Queue')
@@ -264,6 +273,8 @@ export function generateExcelTemplate(): ArrayBuffer {
     { 'COLUMN': 'CATEGORY_ID', 'REQUIRED': 'NO', 'DESCRIPTION': 'YouTube category ID (default: 22 = People & Blogs)' },
     { 'COLUMN': 'MADE_FOR_KIDS', 'REQUIRED': 'NO', 'DESCRIPTION': 'YES or NO — is this video made for children? Default: NO' },
     { 'COLUMN': 'CONTAINS_SYNTHETIC_MEDIA', 'REQUIRED': 'NO', 'DESCRIPTION': 'YES or NO — does this video contain AI-generated or altered content? Default: YES' },
+    { 'COLUMN': 'YOUTUBE_URL', 'REQUIRED': 'NO', 'DESCRIPTION': 'Auto-filled by the app after a successful upload. Leave blank before uploading.' },
+    { 'COLUMN': 'UPLOAD_STATUS', 'REQUIRED': 'NO', 'DESCRIPTION': 'Auto-filled by the app after upload (e.g., complete, error). Leave blank before uploading.' },
   ]
   const instructionsSheet = XLSX.utils.json_to_sheet(instructionsData)
   instructionsSheet['!cols'] = [{ wch: 28 }, { wch: 12 }, { wch: 80 }]
