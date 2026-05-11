@@ -62,7 +62,6 @@ export default function Dashboard() {
         'CHANNEL': v.channelName,
         'TITLE': v.title,
         'YOUTUBE_URL': v.url,
-        'PRIVACY': v.privacy,
         'PUBLISHED_DATE': v.publishedAt ? new Date(v.publishedAt).toLocaleDateString() : '',
         'VIDEO_ID': v.videoId,
         'TAGS': v.tags,
@@ -70,11 +69,11 @@ export default function Dashboard() {
       }))
 
       const sheet = XLSX.utils.json_to_sheet(rows, {
-        header: ['CHANNEL', 'TITLE', 'YOUTUBE_URL', 'PRIVACY', 'PUBLISHED_DATE', 'VIDEO_ID', 'TAGS', 'DESCRIPTION'],
+        header: ['CHANNEL', 'TITLE', 'YOUTUBE_URL', 'PUBLISHED_DATE', 'VIDEO_ID', 'TAGS', 'DESCRIPTION'],
       })
 
       // Bold header row
-      const headers = ['CHANNEL', 'TITLE', 'YOUTUBE_URL', 'PRIVACY', 'PUBLISHED_DATE', 'VIDEO_ID', 'TAGS', 'DESCRIPTION']
+      const headers = ['CHANNEL', 'TITLE', 'YOUTUBE_URL', 'PUBLISHED_DATE', 'VIDEO_ID', 'TAGS', 'DESCRIPTION']
       headers.forEach((_, colIdx) => {
         const cellAddr = XLSX.utils.encode_cell({ r: 0, c: colIdx })
         if (!sheet[cellAddr]) return
@@ -92,7 +91,6 @@ export default function Dashboard() {
         { wch: 30 }, // CHANNEL
         { wch: 60 }, // TITLE
         { wch: 45 }, // YOUTUBE_URL
-        { wch: 12 }, // PRIVACY
         { wch: 16 }, // PUBLISHED_DATE
         { wch: 16 }, // VIDEO_ID
         { wch: 50 }, // TAGS
@@ -113,16 +111,15 @@ export default function Dashboard() {
         const channelRows = channelVideos.map((v: any) => ({
           'TITLE': v.title,
           'YOUTUBE_URL': v.url,
-          'PRIVACY': v.privacy,
           'PUBLISHED_DATE': v.publishedAt ? new Date(v.publishedAt).toLocaleDateString() : '',
           'VIDEO_ID': v.videoId,
           'TAGS': v.tags,
         }))
         const channelSheet = XLSX.utils.json_to_sheet(channelRows, {
-          header: ['TITLE', 'YOUTUBE_URL', 'PRIVACY', 'PUBLISHED_DATE', 'VIDEO_ID', 'TAGS'],
+          header: ['TITLE', 'YOUTUBE_URL', 'PUBLISHED_DATE', 'VIDEO_ID', 'TAGS'],
         })
         channelSheet['!cols'] = [
-          { wch: 60 }, { wch: 45 }, { wch: 12 }, { wch: 16 }, { wch: 16 }, { wch: 50 },
+          { wch: 60 }, { wch: 45 }, { wch: 16 }, { wch: 16 }, { wch: 50 },
         ]
         // Sanitize sheet name (max 31 chars, no special chars)
         const safeName = channelName.replace(/[\\/*?[\]:]/g, '').substring(0, 31)

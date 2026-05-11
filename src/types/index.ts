@@ -127,6 +127,12 @@ declare global {
         resolveDuplicate?: (data: { index: number; resolution: 'replace' | 'new' | 'skip' }) => Promise<void>
         removeAllListeners: () => void
       }
+      quota: {
+        get: () => Promise<{ usedUnits: number; resetDate: string; dailyLimit: number }>
+        reset: () => Promise<{ success: boolean }>
+        onUpdate: (callback: (data: { usedUnits: number; resetDate: string; dailyLimit: number }) => void) => void
+        removeListeners: () => void
+      }
       updater: {
         check: () => Promise<any>
         download: () => Promise<any>

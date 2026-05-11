@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Upload, History, Settings, LogOut,
   Video, ChevronRight, Wifi, Terminal,
-  Download, RefreshCw, Sparkles, X, ArrowDownToLine
+  Download, RefreshCw, Sparkles, X, ArrowDownToLine, Gauge
 } from 'lucide-react'
 import { useApp } from '../App'
 
@@ -35,6 +35,17 @@ export default function Layout({ children }: LayoutProps) {
   const [updateInfo, setUpdateInfo] = useState<{ version?: string; percent?: number } | null>(null)
   const [showUpdateBanner, setShowUpdateBanner] = useState(false)
   const [currentVersion, setCurrentVersion] = useState<string>('')
+
+  // ── Quota state ───────────────────────────────────────────────────────────────
+  const [quota, setQuota] = useState<{ usedUnits: number; resetDate: string; dailyLimit: number } | null>(null)
+
+  useEffect(() => {
+    const api = (window.electronAPI as any)?.quota
+    if (!api) return
+    api.get().then((data: any) => setQuota(data)).catch(() => {})
+    api.onUpdate((data: any) => setQuota(data))
+    return () => api.removeListeners()
+  }, [])
 
   useEffect(() => {
     if (!window.electronAPI?.updater) return
@@ -173,6 +184,33 @@ export default function Layout({ children }: LayoutProps) {
                     width: `${(uploadJobs.filter(j => j.status === 'complete').length / uploadJobs.length) * 100}%`
                   }}
                 />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Quota Widget ── */}
+        {quota !== null && (
+          <div className="px-3 pb-2">
+            <div className="px-3 py-2.5 rounded-lg bg-dark-800 border border-dark-700">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Gauge size={11} className={quota.usedUnits / quota.dailyLimit >= 0.9 ? 'text-accent-red' : quota.usedUnits / quota.dailyLimit >= 0.7 ? 'text-accent-yellow' : 'text-brand-400'} />
+                <span className="text-[10px] font-semibold text-dark-300">API Quota</span>
+                <span className="ml-auto text-[10px] font-bold" style={{ color: quota.usedUnits / quota.dailyLimit >= 0.9 ? '#f87171' : quota.usedUnits / quota.dailyLimit >= 0.7 ? '#fbbf24' : '#818cf8' }}>
+                  {Math.min(100, Math.round((quota.usedUnits / quota.dailyLimit) * 100))}%
+                </span>
+              </div>
+              <div className="w-full bg-dark-700 rounded-full h-1.5 mb-1.5">
+                <div
+                  className="h-1.5 rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, (quota.usedUnits / quota.dailyLimit) * 100)}%`,
+                    backgroundColor: quota.usedUnits / quota.dailyLimit >= 0.9 ? '#f87171' : quota.usedUnits / quota.dailyLimit >= 0.7 ? '#fbbf24' : '#818cf8'
+                  }}
+                />
+              </div>
+              <div className="text-[9px] text-dark-500">
+                {quota.usedUnits.toLocaleString()} / {quota.dailyLimit.toLocaleString()} units &bull; resets midnight PT
               </div>
             </div>
           </div>

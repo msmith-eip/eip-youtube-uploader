@@ -80,8 +80,44 @@ const store = new Store({
       concurrentUploads: 1,
       delayBetweenUploads: 2000,
     },
+    quota: {
+      usedUnits: 0,
+      resetDate: '',  // ISO date string YYYY-MM-DD (Pacific Time)
+    },
   },
 })
+
+// ─── Quota Tracking ───────────────────────────────────────────────────────────
+// YouTube Data API v3 quota costs (units):
+//   videos.insert   = 1600 per upload
+//   channels.list   = 1
+//   videos.list     = 1
+//   playlistItems.list = 1
+// Daily limit: 10,000 units (resets at midnight Pacific Time)
+const QUOTA_DAILY_LIMIT = 10000
+
+function getQuotaResetDatePT(): string {
+  // Returns today's date in Pacific Time as YYYY-MM-DD
+  const now = new Date()
+  const ptStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+  return ptStr
+}
+
+function addQuota(units: number, operation: string): void {
+  const today = getQuotaResetDatePT()
+  const quota = store.get('quota') as { usedUnits: number; resetDate: string }
+  // Reset if it's a new day
+  if (quota.resetDate !== today) {
+    store.set('quota', { usedUnits: units, resetDate: today })
+  } else {
+    store.set('quota.usedUnits', quota.usedUnits + units)
+  }
+  const updated = store.get('quota') as { usedUnits: number; resetDate: string }
+  const pct = Math.min(100, Math.round((updated.usedUnits / QUOTA_DAILY_LIMIT) * 100))
+  addLog('info', 'Quota', `+${units} units (${operation}) — ${updated.usedUnits.toLocaleString()} / ${QUOTA_DAILY_LIMIT.toLocaleString()} used (${pct}%)`)
+  // Push update to renderer
+  mainWindow?.webContents.send('quota:update', { usedUnits: updated.usedUnits, resetDate: updated.resetDate, dailyLimit: QUOTA_DAILY_LIMIT })
+}
 
 // ─── OAuth2 Setup ─────────────────────────────────────────────────────────────
 const REDIRECT_URI = 'http://localhost:8765'
@@ -231,6 +267,7 @@ ipcMain.handle('youtube:get-channels', async () => {
       mine: true,
       maxResults: 50,
     })
+    addQuota(1, 'channels.list')
     return { success: true, channels: response.data.items || [] }
   } catch (err: any) {
     return { success: false, error: err.message }
@@ -483,6 +520,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
       )
 
       const videoId = response.data.id
+      addQuota(1600, `videos.insert (${job.fileName || job.title})`)
       const historyEntry = {
         id: videoId,
         title: job.title,
@@ -616,6 +654,7 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
       }
     )
     const videoId = response.data.id
+    addQuota(1600, `videos.insert/retry (${job.fileName || job.title})`)
     const history = (store.get('uploadHistory') as any[]) || []
     history.unshift({
       id: videoId,
@@ -699,6 +738,7 @@ ipcMain.handle('upload:force-upload-job', async (event, job: any) => {
       }
     )
     const videoId = response.data.id
+    addQuota(1600, `videos.insert/force (${job.fileName || job.title})`)
     const history = (store.get('uploadHistory') as any[]) || []
     history.unshift({
       id: videoId,
@@ -781,6 +821,7 @@ async function checkPrivacyForcedPrivate(
 ): Promise<void> {
   try {
     const res = await youtube.videos.list({ part: ['status'], id: [videoId] })
+    addQuota(1, 'videos.list (privacy check)')
     const actual = res?.data?.items?.[0]?.status?.privacyStatus
     if (actual && actual === 'private' && intendedPrivacy !== 'private') {
       addLog('warn', 'Upload',
@@ -987,12 +1028,16 @@ ipcMain.handle('youtube:export-all-videos', async () => {
       mine: true,
       maxResults: 50,
     })
+    addQuota(1, 'channels.list (export)')
     const channels = channelsResp.data.items || []
     if (channels.length === 0) return { success: false, error: 'No channels found' }
 
     addLog('info', 'Export', `Found ${channels.length} channel(s). Fetching videos...`)
 
-    // Step 2: For each channel, page through all videos via the uploads playlist
+    // Step 2: For each channel, page through all videos via the uploads playlist.
+    // We use ONLY playlistItems.list (1 quota unit per call) and skip the
+    // videos.list detail call (saves 50% quota). snippet already contains
+    // title, description, tags, and publishedAt.
     const allVideos: any[] = []
     for (const channel of channels) {
       const channelName = channel.snippet?.title || 'Unknown Channel'
@@ -1011,37 +1056,21 @@ ipcMain.handle('youtube:export-all-videos', async () => {
           maxResults: 50,
           pageToken: pageToken || undefined,
         })
+        addQuota(1, `playlistItems.list (${channelName} page ${pageCount + 1})`)
         const items = playlistResp.data.items || []
-
-        // Batch fetch video details (privacy, duration) — up to 50 at a time
-        const videoIds = items.map((item: any) => item.contentDetails?.videoId).filter(Boolean)
-        let videoDetails: Map<string, any> = new Map()
-        if (videoIds.length > 0) {
-          const detailsResp = await youtube.videos.list({
-            part: ['snippet', 'status', 'contentDetails'],
-            id: videoIds,
-            maxResults: 50,
-          })
-          for (const v of (detailsResp.data.items || [])) {
-            if (v.id) videoDetails.set(v.id, v)
-          }
-        }
 
         for (const item of items) {
           const videoId = item.contentDetails?.videoId
           if (!videoId) continue
-          const detail = videoDetails.get(videoId)
-          const snippet = detail?.snippet || item.snippet || {}
+          const snippet = item.snippet || {}
           allVideos.push({
             channelName,
             channelId,
             videoId,
             title: snippet.title || '',
             url: `https://www.youtube.com/watch?v=${videoId}`,
-            privacy: detail?.status?.privacyStatus || '',
             publishedAt: snippet.publishedAt || '',
             description: (snippet.description || '').substring(0, 500),
-            duration: detail?.contentDetails?.duration || '',
             tags: (snippet.tags || []).join(', '),
           })
         }
@@ -1052,7 +1081,7 @@ ipcMain.handle('youtube:export-all-videos', async () => {
         if (pageCount >= 200) break
       } while (pageToken)
 
-      addLog('info', 'Export', `  → ${channelName}: fetched videos so far, total: ${allVideos.length}`)
+      addLog('info', 'Export', `  → ${channelName}: fetched ${allVideos.length} videos total`)
     }
 
     addLog('success', 'Export', `Total videos fetched: ${allVideos.length}. Building Excel...`)
@@ -1062,7 +1091,31 @@ ipcMain.handle('youtube:export-all-videos', async () => {
     // Return the data to the renderer to build the Excel file there
     return { success: true, videos: allVideos }
   } catch (err: any) {
-    addLog('error', 'Export', `Failed to export videos: ${err.message}`)
-    return { success: false, error: err.message }
+    const msg = err.message || ''
+    const isQuota = msg.toLowerCase().includes('quota') || (err.code === 403)
+    const friendlyMsg = isQuota
+      ? 'YouTube API quota exceeded. The daily quota resets at midnight Pacific Time. Try the export again tomorrow, or after midnight PT.'
+      : msg
+    addLog('error', 'Export', `Failed to export videos: ${friendlyMsg}`)
+    return { success: false, error: friendlyMsg }
   }
+})
+
+// ─── IPC: Quota ───────────────────────────────────────────────────────────────
+ipcMain.handle('quota:get', async () => {
+  const today = getQuotaResetDatePT()
+  const quota = store.get('quota') as { usedUnits: number; resetDate: string }
+  // Auto-reset if it's a new day
+  if (quota.resetDate !== today) {
+    store.set('quota', { usedUnits: 0, resetDate: today })
+    return { usedUnits: 0, resetDate: today, dailyLimit: QUOTA_DAILY_LIMIT }
+  }
+  return { usedUnits: quota.usedUnits, resetDate: quota.resetDate, dailyLimit: QUOTA_DAILY_LIMIT }
+})
+
+ipcMain.handle('quota:reset', async () => {
+  const today = getQuotaResetDatePT()
+  store.set('quota', { usedUnits: 0, resetDate: today })
+  mainWindow?.webContents.send('quota:update', { usedUnits: 0, resetDate: today, dailyLimit: QUOTA_DAILY_LIMIT })
+  return { success: true }
 })

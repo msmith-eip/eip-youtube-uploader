@@ -108,6 +108,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeAllListeners('upload:all-complete')
     },
   },
+  // Quota
+  quota: {
+    get: () => ipcRenderer.invoke('quota:get'),
+    reset: () => ipcRenderer.invoke('quota:reset'),
+    onUpdate: (callback: (data: any) => void) => {
+      ipcRenderer.on('quota:update', (_, data) => callback(data))
+    },
+    removeListeners: () => {
+      ipcRenderer.removeAllListeners('quota:update')
+    },
+  },
+
   // Auto Updater
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),
