@@ -43,6 +43,7 @@ export default function UploadQueue() {
   // Refs so the IPC closure always has the latest Excel state
   const excelFilePathRef = useRef<string>('')
   const excelBase64Ref = useRef<string>('')
+  const uploadJobsRef = useRef<UploadJob[]>([])
 
   const showToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {
     setToast({ type, message })
@@ -66,9 +67,31 @@ export default function UploadQueue() {
     })
 
     window.electronAPI.upload.onJobComplete(({ index, videoId, youtubeUrl }) => {
-      setUploadJobs(prev => prev.map((job, i) =>
-        i === index ? { ...job, status: 'complete', progress: 100, videoId, youtubeUrl } : job
-      ))
+      setUploadJobs(prev => {
+        const updated: UploadJob[] = prev.map((job, i) =>
+          i === index ? { ...job, status: 'complete' as const, progress: 100, videoId, youtubeUrl } : job
+        )
+        uploadJobsRef.current = updated
+        // Write back to Excel immediately after each successful upload
+        const _base64 = excelBase64Ref.current
+        const _path = excelFilePathRef.current
+        if (_base64 && _path && window.electronAPI) {
+          const results = updated.map(j => ({
+            filename: j.filePath || j.fileName,
+            status: j.status as 'complete' | 'error' | 'pending',
+            videoId: j.videoId,
+            youtubeUrl: j.youtubeUrl,
+            error: j.error,
+            uploadedAt: new Date().toISOString(),
+          }))
+          try {
+            const updatedBuffer = writeBackToExcel(_base64, results)
+            const dataArray = Array.from(new Uint8Array(updatedBuffer))
+            window.electronAPI.fs.overwriteFile({ filePath: _path, data: dataArray }).catch(() => {})
+          } catch {}
+        }
+        return updated
+      })
     })
 
     window.electronAPI.upload.onJobError(({ index, error, canRetry }) => {
