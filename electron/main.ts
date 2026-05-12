@@ -413,7 +413,13 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
     currentUploadIndex = i
     const job = uploadQueue[i]
 
-    // ── Duplicate filename check ────────────────────────────────────────────
+    // ── Skip already-completed or skipped jobs (resume after cancel) ───────────────────────
+    if (job.status === 'complete' || job.status === 'skipped') {
+      addLog('info', 'Upload', `Skipping already-completed job: ${job.fileName || job.filePath}`)
+      continue
+    }
+
+    // ── Duplicate filename check ───────────────────────────────────────────────────────────────
     // If this filename was already uploaded successfully, ask the user what to do
     if (!job.forceUpload) {
       const jobFileName = require('path').basename(job.filePath.trim())
