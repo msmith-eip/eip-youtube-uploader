@@ -1122,6 +1122,72 @@ ipcMain.handle('youtube:export-all-videos', async () => {
   }
 })
 
+// ─── IPC: Fetch videos for a specific channel (for Channel Videos sheet) ────────
+ipcMain.handle('youtube:fetch-channel-videos', async (_event, channelId: string) => {
+  try {
+    const tokens = store.get('tokens') as any
+    if (!tokens) return { success: false, error: 'Not authenticated' }
+    oauth2Client.setCredentials(tokens)
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
+
+    // Get the uploads playlist ID for this channel
+    const channelResp = await youtube.channels.list({
+      part: ['snippet', 'contentDetails'],
+      id: [channelId],
+      maxResults: 1,
+    })
+    addQuota(1, 'channels.list (channel videos sheet)')
+    const channel = channelResp.data.items?.[0]
+    if (!channel) return { success: false, error: 'Channel not found' }
+    const channelName = channel.snippet?.title || 'Unknown Channel'
+    const uploadsPlaylistId = channel.contentDetails?.relatedPlaylists?.uploads
+    if (!uploadsPlaylistId) return { success: false, error: 'No uploads playlist found' }
+
+    addLog('info', 'ChannelSheet', `Fetching videos for channel: ${channelName}`)
+    const videos: any[] = []
+    let pageToken: string | undefined = undefined
+    let pageCount = 0
+
+    do {
+      const playlistResp: any = await youtube.playlistItems.list({
+        part: ['snippet', 'contentDetails'],
+        playlistId: uploadsPlaylistId,
+        maxResults: 50,
+        pageToken: pageToken || undefined,
+      })
+      addQuota(1, `playlistItems.list (channel sheet page ${pageCount + 1})`)
+      const items = playlistResp.data.items || []
+      for (const item of items) {
+        const videoId = item.contentDetails?.videoId
+        if (!videoId) continue
+        const snippet = item.snippet || {}
+        videos.push({
+          videoId,
+          title: snippet.title || '',
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+          publishedAt: snippet.publishedAt || '',
+          channelName,
+          channelId,
+        })
+      }
+      pageToken = playlistResp.data.nextPageToken || undefined
+      pageCount++
+      if (pageCount >= 200) break
+    } while (pageToken)
+
+    addLog('info', 'ChannelSheet', `Fetched ${videos.length} videos for ${channelName}`)
+    return { success: true, videos, channelName }
+  } catch (err: any) {
+    const msg = err.message || ''
+    const isQuota = msg.toLowerCase().includes('quota') || (err.code === 403)
+    const friendlyMsg = isQuota
+      ? 'YouTube API quota exceeded. Try again after midnight Pacific Time.'
+      : msg
+    addLog('error', 'ChannelSheet', `Failed to fetch channel videos: ${friendlyMsg}`)
+    return { success: false, error: friendlyMsg }
+  }
+})
+
 // ─── IPC: Quota ───────────────────────────────────────────────────────────────
 ipcMain.handle('quota:get', async () => {
   const today = getQuotaResetDatePT()

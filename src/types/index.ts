@@ -87,6 +87,7 @@ declare global {
       youtube: {
         getChannels: () => Promise<{ success: boolean; channels?: Channel[]; error?: string }>
         exportAllVideos: () => Promise<{ success: boolean; videos?: any[]; error?: string }>
+        fetchChannelVideos: (channelId: string) => Promise<{ success: boolean; videos?: any[]; channelName?: string; error?: string }>
       }
       dialog: {
         openVideos: () => Promise<{ canceled: boolean; filePaths: string[] }>

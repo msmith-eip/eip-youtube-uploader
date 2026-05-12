@@ -280,6 +280,24 @@ export function generateExcelTemplate(): ArrayBuffer {
   instructionsSheet['!cols'] = [{ wch: 28 }, { wch: 12 }, { wch: 80 }]
   XLSX.utils.book_append_sheet(workbook, instructionsSheet, 'Instructions')
 
+  // ── Channel Videos Sheet ───────────────────────────────────────────────────────────────
+  // This sheet is auto-populated by the app after each successful upload.
+  // It lists all videos on the channel with their title and YouTube URL.
+  const channelVideosAoa = [
+    ['VIDEO_ID', 'TITLE', 'YOUTUBE_URL', 'CHANNEL', 'PUBLISHED_AT'],
+    ['', '(Auto-populated after each successful upload)', '', '', ''],
+  ]
+  const channelVideosSheet = XLSX.utils.aoa_to_sheet(channelVideosAoa)
+  channelVideosSheet['!cols'] = [
+    { wch: 16 },  // VIDEO_ID
+    { wch: 60 },  // TITLE
+    { wch: 45 },  // YOUTUBE_URL
+    { wch: 35 },  // CHANNEL
+    { wch: 24 },  // PUBLISHED_AT
+  ]
+  channelVideosSheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft' }
+  XLSX.utils.book_append_sheet(workbook, channelVideosSheet, 'Channel Videos')
+
   return XLSX.write(workbook, { type: 'array', bookType: 'xlsx', cellStyles: true })
 }
 
@@ -459,5 +477,102 @@ export function writeBackToExcel(
   newSheet['!cols'] = colWidths
 
   workbook.Sheets[sheetName] = newSheet
+  return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
+}
+
+// ─── Update / Create Channel Videos Sheet ────────────────────────────────────
+// Maintains a "Channel Videos" sheet tab in the workbook.
+// - If the sheet doesn't exist it is created automatically.
+// - Existing rows are preserved; new videos are merged in (no duplicates by videoId).
+// - Newly uploaded video is prepended at the top (row 2, below header).
+export interface ChannelVideoEntry {
+  videoId: string
+  title: string
+  url: string
+  publishedAt: string
+  channelName: string
+  channelId?: string
+}
+
+export function updateChannelVideosSheet(
+  base64: string,
+  newVideo: ChannelVideoEntry,
+  allChannelVideos?: ChannelVideoEntry[]
+): ArrayBuffer {
+  const binaryStr = atob(base64)
+  const bytes = new Uint8Array(binaryStr.length)
+  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i)
+  const workbook = XLSX.read(bytes, { type: 'array' })
+
+  const SHEET_NAME = 'Channel Videos'
+  const HEADERS = ['VIDEO_ID', 'TITLE', 'YOUTUBE_URL', 'CHANNEL', 'PUBLISHED_AT']
+
+  // Read existing rows from the sheet (if it exists)
+  const existingMap = new Map<string, any[]>() // videoId → row array
+  if (workbook.SheetNames.includes(SHEET_NAME)) {
+    const existing: any[][] = XLSX.utils.sheet_to_json(
+      workbook.Sheets[SHEET_NAME], { header: 1, defval: '' }
+    )
+    // Skip header row (index 0), read data rows
+    for (let i = 1; i < existing.length; i++) {
+      const row = existing[i]
+      const vid = String(row[0] || '').trim()
+      if (vid) existingMap.set(vid, row)
+    }
+  }
+
+  // Merge in all channel videos fetched from YouTube (if provided)
+  if (allChannelVideos) {
+    for (const v of allChannelVideos) {
+      if (!existingMap.has(v.videoId)) {
+        existingMap.set(v.videoId, [
+          v.videoId,
+          v.title,
+          v.url,
+          v.channelName,
+          v.publishedAt,
+        ])
+      }
+    }
+  }
+
+  // Ensure the newly uploaded video is in the map (overwrite if already present)
+  existingMap.set(newVideo.videoId, [
+    newVideo.videoId,
+    newVideo.title,
+    newVideo.url,
+    newVideo.channelName,
+    newVideo.publishedAt,
+  ])
+
+  // Sort: newly uploaded video first, then by publishedAt descending
+  const rows = Array.from(existingMap.values()).sort((a, b) => {
+    if (a[0] === newVideo.videoId) return -1
+    if (b[0] === newVideo.videoId) return 1
+    return (b[4] || '').localeCompare(a[4] || '')
+  })
+
+  const aoa: any[][] = [HEADERS, ...rows]
+  const sheet = XLSX.utils.aoa_to_sheet(aoa)
+
+  // Column widths
+  sheet['!cols'] = [
+    { wch: 16 },  // VIDEO_ID
+    { wch: 60 },  // TITLE
+    { wch: 45 },  // YOUTUBE_URL
+    { wch: 35 },  // CHANNEL
+    { wch: 24 },  // PUBLISHED_AT
+  ]
+
+  // Freeze header row
+  sheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft' }
+
+  // Replace or add the sheet
+  if (workbook.SheetNames.includes(SHEET_NAME)) {
+    workbook.Sheets[SHEET_NAME] = sheet
+  } else {
+    XLSX.utils.book_append_sheet(workbook, sheet, SHEET_NAME)
+  }
+
   return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
 }

@@ -9,7 +9,8 @@ import {
 import { v4 as uuidv4 } from 'uuid'
 import { useApp } from '../App'
 import type { UploadJob, PrivacyStatus } from '../types'
-import { parseExcelFile, generateExcelTemplate, exportJobsToExcel, writeBackToExcel, formatFileSize, EIP_CHANNELS, YOUTUBE_CATEGORIES } from '../utils/excelParser'
+import { parseExcelFile, generateExcelTemplate, exportJobsToExcel, writeBackToExcel, updateChannelVideosSheet, formatFileSize, EIP_CHANNELS, YOUTUBE_CATEGORIES } from '../utils/excelParser'
+import type { ChannelVideoEntry } from '../utils/excelParser'
 
 type FilterStatus = 'all' | 'pending' | 'uploading' | 'complete' | 'error' | 'syncing'
 
@@ -89,12 +90,61 @@ export default function UploadQueue() {
             const updatedBuffer = writeBackToExcel(_base64, results)
             const dataArray = Array.from(new Uint8Array(updatedBuffer))
             // Update the in-memory base64 so the next write-back builds on the latest file state
-            // (not the original blank snapshot from import time)
             const updatedBase64 = btoa(String.fromCharCode(...new Uint8Array(updatedBuffer)))
             excelBase64Ref.current = updatedBase64
             window.electronAPI.fs.overwriteFile({ filePath: _path, data: dataArray }).catch(() => {})
           } catch (err: any) {
             console.error('[WriteBack] Per-job write-back failed:', err?.message)
+          }
+
+          // Update the Channel Videos sheet with the newly uploaded video
+          const completedJob = updated[index]
+          if (completedJob && videoId && youtubeUrl && window.electronAPI.youtube?.fetchChannelVideos) {
+            const newVideoEntry: ChannelVideoEntry = {
+              videoId,
+              title: completedJob.title || completedJob.fileName,
+              url: youtubeUrl,
+              publishedAt: new Date().toISOString(),
+              channelName: completedJob.channelName || '',
+              channelId: completedJob.channelId || '',
+            }
+            // Fetch all existing channel videos to merge into the sheet
+            window.electronAPI.youtube.fetchChannelVideos(completedJob.channelId || '').then(resp => {
+              const allVideos: ChannelVideoEntry[] = (resp.success && resp.videos)
+                ? resp.videos.map((v: any) => ({
+                    videoId: v.videoId,
+                    title: v.title,
+                    url: v.url,
+                    publishedAt: v.publishedAt,
+                    channelName: v.channelName || completedJob.channelName,
+                    channelId: v.channelId || completedJob.channelId,
+                  }))
+                : []
+              const currentBase64 = excelBase64Ref.current
+              const currentPath = excelFilePathRef.current
+              if (!currentBase64 || !currentPath || !window.electronAPI) return
+              try {
+                const sheetBuffer = updateChannelVideosSheet(currentBase64, newVideoEntry, allVideos)
+                const sheetArray = Array.from(new Uint8Array(sheetBuffer))
+                const sheetBase64 = btoa(String.fromCharCode(...new Uint8Array(sheetBuffer)))
+                excelBase64Ref.current = sheetBase64
+                window.electronAPI.fs.overwriteFile({ filePath: currentPath, data: sheetArray }).catch(() => {})
+              } catch (e: any) {
+                console.error('[ChannelSheet] Failed to update Channel Videos sheet:', e?.message)
+              }
+            }).catch(() => {
+              // If fetch fails (e.g. quota), still add just the new video without full channel list
+              const currentBase64 = excelBase64Ref.current
+              const currentPath = excelFilePathRef.current
+              if (!currentBase64 || !currentPath || !window.electronAPI) return
+              try {
+                const sheetBuffer = updateChannelVideosSheet(currentBase64, newVideoEntry)
+                const sheetArray = Array.from(new Uint8Array(sheetBuffer))
+                const sheetBase64 = btoa(String.fromCharCode(...new Uint8Array(sheetBuffer)))
+                excelBase64Ref.current = sheetBase64
+                window.electronAPI.fs.overwriteFile({ filePath: currentPath, data: sheetArray }).catch(() => {})
+              } catch {}
+            })
           }
         }
         return updated
