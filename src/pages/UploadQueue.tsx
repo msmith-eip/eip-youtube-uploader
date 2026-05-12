@@ -78,6 +78,7 @@ export default function UploadQueue() {
         if (_base64 && _path && window.electronAPI) {
           const results = updated.map(j => ({
             filename: j.filePath || j.fileName,
+            fileName: j.fileName,
             status: j.status as 'complete' | 'error' | 'pending',
             videoId: j.videoId,
             youtubeUrl: j.youtubeUrl,
@@ -88,7 +89,9 @@ export default function UploadQueue() {
             const updatedBuffer = writeBackToExcel(_base64, results)
             const dataArray = Array.from(new Uint8Array(updatedBuffer))
             window.electronAPI.fs.overwriteFile({ filePath: _path, data: dataArray }).catch(() => {})
-          } catch {}
+          } catch (err: any) {
+            console.error('[WriteBack] Per-job write-back failed:', err?.message)
+          }
         }
         return updated
       })
@@ -135,6 +138,7 @@ export default function UploadQueue() {
           try {
             const results = jobs.map(j => ({
               filename: j.filePath || j.fileName,
+              fileName: j.fileName,
               status: j.status as 'complete' | 'error' | 'pending',
               videoId: j.videoId,
               youtubeUrl: j.youtubeUrl,

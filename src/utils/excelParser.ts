@@ -337,7 +337,8 @@ export function formatDuration(seconds: number): string {
 
 // ─── Write Back Upload Results to Original Excel ──────────────────────────────
 export interface WriteBackResult {
-  filename: string
+  filename: string   // full filePath
+  fileName?: string  // bare filename (e.g. video.mp4)
   status: 'complete' | 'error' | 'pending'
   videoId?: string
   youtubeUrl?: string
@@ -383,16 +384,27 @@ export function writeBackToExcel(
   const errorCol      = getOrAddCol('UPLOAD_ERROR')
 
   // Find the filename / file_path column to match rows
-  const filenameColIdx = headerRow.findIndex(h =>
-    h === 'FILENAME' || h === 'FILE_NAME' || h === 'FILE_PATH' || h === 'FILEPATH'
-  )
+  // Find FILENAME column first, then fall back to FILE_PATH
+  let filenameColIdx = headerRow.findIndex(h => h === 'FILENAME' || h === 'FILE_NAME')
+  if (filenameColIdx === -1) {
+    filenameColIdx = headerRow.findIndex(h => h === 'FILE_PATH' || h === 'FILEPATH' || h === 'PATH')
+  }
 
-  // Build lookup map: basename → result (case-insensitive)
+  // Build lookup map: all possible keys → result (case-insensitive, normalized)
+  // Keys stored: full path, basename from path, explicit fileName, basename without extension
   const resultMap = new Map<string, WriteBackResult>()
+  const norm = (s: string) => s.trim().toLowerCase()
+  const base = (s: string) => s.split(/[\\/]/).pop() || s
   for (const r of results) {
-    const basename = r.filename.split(/[\\/]/).pop()?.toLowerCase() || r.filename.toLowerCase()
-    resultMap.set(basename, r)
-    resultMap.set(r.filename.toLowerCase(), r)
+    const fullPath = norm(r.filename)
+    const basenameFromPath = norm(base(r.filename))
+    const explicitName = r.fileName ? norm(r.fileName) : ''
+    const basenameNoExt = basenameFromPath.replace(/\.[^.]+$/, '')
+    resultMap.set(fullPath, r)
+    resultMap.set(basenameFromPath, r)
+    if (explicitName) resultMap.set(explicitName, r)
+    if (explicitName) resultMap.set(norm(base(explicitName)), r)
+    resultMap.set(basenameNoExt, r)
   }
 
   // Update each data row
@@ -406,9 +418,14 @@ export function writeBackToExcel(
     if (filenameColIdx >= 0 && row[filenameColIdx]) {
       rowFile = String(row[filenameColIdx]).trim().toLowerCase()
     }
+    if (!rowFile) continue
     const rowBasename = rowFile.split(/[\\/]/).pop() || rowFile
+    const rowBasenameNoExt = rowBasename.replace(/\.[^.]+$/, '')
 
-    const result = resultMap.get(rowBasename) || resultMap.get(rowFile)
+    const result =
+      resultMap.get(rowBasename) ||
+      resultMap.get(rowFile) ||
+      resultMap.get(rowBasenameNoExt)
     if (!result) continue
 
     const ts = result.uploadedAt || new Date().toISOString()
