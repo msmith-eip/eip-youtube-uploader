@@ -492,13 +492,8 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
             },
             status: {
               privacyStatus: job.privacy || 'unlisted',
-              // Per-job values from spreadsheet; defaults: not made for kids, contains synthetic media
               selfDeclaredMadeForKids: job.selfDeclaredMadeForKids ?? false,
               containsSyntheticMedia: job.containsSyntheticMedia ?? true,
-            } as any,
-            recordingDetails: {
-              recordingDate: new Date().toISOString().split('T')[0],
-              ...(job.location ? { locationDescription: job.location } : {}),
             } as any,
           },
           media: {
