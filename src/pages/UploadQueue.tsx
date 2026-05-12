@@ -88,6 +88,10 @@ export default function UploadQueue() {
           try {
             const updatedBuffer = writeBackToExcel(_base64, results)
             const dataArray = Array.from(new Uint8Array(updatedBuffer))
+            // Update the in-memory base64 so the next write-back builds on the latest file state
+            // (not the original blank snapshot from import time)
+            const updatedBase64 = btoa(String.fromCharCode(...new Uint8Array(updatedBuffer)))
+            excelBase64Ref.current = updatedBase64
             window.electronAPI.fs.overwriteFile({ filePath: _path, data: dataArray }).catch(() => {})
           } catch (err: any) {
             console.error('[WriteBack] Per-job write-back failed:', err?.message)

@@ -786,8 +786,31 @@ interface LogEntry {
   detail?: string
 }
 
-const appLogs: LogEntry[] = []
-const MAX_LOGS = 2000
+const MAX_LOGS = 5000
+
+// ─── Persistent Log File ─────────────────────────────────────────────────────
+// Logs are stored in a plain JSON file in the user data directory so they
+// survive app updates, reinstalls, and electron-store schema changes.
+const LOG_FILE = path.join(app.getPath('userData'), 'activity-log.json')
+
+function loadLogsFromDisk(): LogEntry[] {
+  try {
+    if (fs.existsSync(LOG_FILE)) {
+      const raw = fs.readFileSync(LOG_FILE, 'utf-8')
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) return parsed.slice(0, MAX_LOGS)
+    }
+  } catch {}
+  return []
+}
+
+function saveLogsToDisk(logs: LogEntry[]) {
+  try {
+    fs.writeFileSync(LOG_FILE, JSON.stringify(logs.slice(0, MAX_LOGS)), 'utf-8')
+  } catch {}
+}
+
+const appLogs: LogEntry[] = loadLogsFromDisk()
 
 function addLog(level: LogEntry['level'], category: string, message: string, detail?: string) {
   const entry: LogEntry = {
@@ -800,6 +823,8 @@ function addLog(level: LogEntry['level'], category: string, message: string, det
   }
   appLogs.unshift(entry)
   if (appLogs.length > MAX_LOGS) appLogs.splice(MAX_LOGS)
+  // Persist to disk immediately so logs survive crashes and updates
+  saveLogsToDisk(appLogs)
   // Push to renderer in real-time
   mainWindow?.webContents.send('logs:new-entry', entry)
 }
@@ -865,6 +890,7 @@ ipcMain.handle('logs:get-all', async () => {
 })
 ipcMain.handle('logs:clear', async () => {
   appLogs.splice(0, appLogs.length)
+  saveLogsToDisk(appLogs)
   return { success: true }
 })
 ipcMain.handle('logs:export', async () => {
