@@ -474,6 +474,13 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
           mainWindow?.webContents.send('upload:job-syncing', { index: i, message: msg })
         })
       }
+      // Check file exists before attempting to stream it — gives a clear error instead of ENOENT
+      if (!fs.existsSync(normalizedPath)) {
+        const hint = normalizedPath.includes('OneDrive') && !normalizedPath.includes('OneDrive - ')
+          ? `File not found. The path may be missing "OneDrive - " — check that the FILE_PATH in your spreadsheet matches the full OneDrive path on this machine.`
+          : `File not found. Check that the file exists at: ${normalizedPath}`
+        throw new Error(hint)
+      }
       const fileStream = fs.createReadStream(normalizedPath)
       const fileStat = fs.statSync(normalizedPath)
 
