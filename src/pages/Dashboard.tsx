@@ -21,6 +21,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadHistory()
+    // Auto-load channels on mount so the dashboard shows them without needing Refresh
+    if (channels.length === 0) {
+      refreshChannels()
+    }
   }, [])
 
   const showToast = useCallback((type: 'success' | 'error' | 'info', message: string) => {

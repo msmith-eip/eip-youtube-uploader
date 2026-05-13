@@ -119,6 +119,16 @@ function getQuotaResetDatePT(): string {
   return ptStr
 }
 
+// ─── Quota Exhaustion Helper ─────────────────────────────────────────────────
+// Call this whenever a YouTube API quota exceeded error is detected.
+// Snaps the stored quota to the daily limit so the sidebar shows 100%.
+function markQuotaExhausted(): void {
+  const today = getQuotaResetDatePT()
+  store.set('quota', { usedUnits: QUOTA_DAILY_LIMIT, resetDate: today })
+  addLog('error', 'Quota', `Quota exhausted — daily limit reached (${QUOTA_DAILY_LIMIT.toLocaleString()} / ${QUOTA_DAILY_LIMIT.toLocaleString()} units). Resets at midnight Pacific Time.`)
+  mainWindow?.webContents.send('quota:update', { usedUnits: QUOTA_DAILY_LIMIT, resetDate: today, dailyLimit: QUOTA_DAILY_LIMIT })
+}
+
 function addQuota(units: number, operation: string): void {
   const today = getQuotaResetDatePT()
   const quota = store.get('quota') as { usedUnits: number; resetDate: string }
@@ -287,7 +297,10 @@ ipcMain.handle('youtube:get-channels', async () => {
     addQuota(QUOTA_COSTS.CHANNELS_LIST, 'channels.list')
     return { success: true, channels: response.data.items || [] }
   } catch (err: any) {
-    return { success: false, error: err.message }
+    const msg = err.message || ''
+    const isQuota = msg.toLowerCase().includes('quota') || (err.code === 403)
+    if (isQuota) markQuotaExhausted()
+    return { success: false, error: msg }
   }
 })
 
@@ -593,6 +606,8 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
         // Both attempts failed - mark as error with retry button
         const errMsg = err2.message || 'Upload failed after retry'
         addLog('error', 'Upload', `Failed: ${job.fileName || job.filePath}`, errMsg)
+        // Snap quota to 100% if this was a quota exceeded error
+        if (errMsg.toLowerCase().includes('quota') || (err2.code === 403)) markQuotaExhausted()
         mainWindow?.webContents.send('upload:job-error', {
           index: i,
           jobId: job.id,
@@ -708,13 +723,15 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
     await attemptSingle()
     return { success: true }
   } catch (err: any) {
-    addLog('error', 'Upload', `Retry failed: ${job.fileName || job.filePath}`, err.message || 'Retry failed')
+    const retryErrMsg = err.message || 'Retry failed'
+    if (retryErrMsg.toLowerCase().includes('quota') || (err.code === 403)) markQuotaExhausted()
+    addLog('error', 'Upload', `Retry failed: ${job.fileName || job.filePath}`, retryErrMsg)
     mainWindow?.webContents.send('upload:job-error', {
       index: job._queueIndex,
-      error: err.message || 'Retry failed',
+      error: retryErrMsg,
       canRetry: true,
     })
-    return { success: false, error: err.message }
+    return { success: false, error: retryErrMsg }
   }
 })
 
@@ -793,13 +810,15 @@ ipcMain.handle('upload:force-upload-job', async (event, job: any) => {
     await attemptForce()
     return { success: true }
   } catch (err: any) {
-    addLog('error', 'Upload', `Force upload failed: ${job.fileName || job.filePath}`, err.message || 'Force upload failed')
+    const forceErrMsg = err.message || 'Force upload failed'
+    if (forceErrMsg.toLowerCase().includes('quota') || (err.code === 403)) markQuotaExhausted()
+    addLog('error', 'Upload', `Force upload failed: ${job.fileName || job.filePath}`, forceErrMsg)
     mainWindow?.webContents.send('upload:job-error', {
       index: forceIndex,
-      error: err.message || 'Force upload failed',
+      error: forceErrMsg,
       canRetry: true,
     })
-    return { success: false, error: err.message }
+    return { success: false, error: forceErrMsg }
   }
 })
 
@@ -1138,6 +1157,7 @@ ipcMain.handle('youtube:export-all-videos', async () => {
   } catch (err: any) {
     const msg = err.message || ''
     const isQuota = msg.toLowerCase().includes('quota') || (err.code === 403)
+    if (isQuota) markQuotaExhausted()
     const friendlyMsg = isQuota
       ? 'YouTube API quota exceeded. The daily quota resets at midnight Pacific Time. Try the export again tomorrow, or after midnight PT.'
       : msg
@@ -1223,6 +1243,7 @@ ipcMain.handle('youtube:fetch-channel-videos', async (_event, channelId: string)
   } catch (err: any) {
     const msg = err.message || ''
     const isQuota = msg.toLowerCase().includes('quota') || (err.code === 403)
+    if (isQuota) markQuotaExhausted()
     const friendlyMsg = isQuota
       ? 'YouTube API quota exceeded. Try again after midnight Pacific Time.'
       : msg
