@@ -492,6 +492,7 @@ export interface ChannelVideoEntry {
   publishedAt: string
   channelName: string
   channelId?: string
+  viewCount?: number
 }
 
 export function updateChannelVideosSheet(
@@ -505,7 +506,7 @@ export function updateChannelVideosSheet(
   const workbook = XLSX.read(bytes, { type: 'array' })
 
   const SHEET_NAME = 'Channel Videos'
-  const HEADERS = ['VIDEO_ID', 'TITLE', 'YOUTUBE_URL', 'CHANNEL', 'PUBLISHED_AT']
+  const HEADERS = ['VIDEO_ID', 'TITLE', 'YOUTUBE_URL', 'CHANNEL', 'PUBLISHED_AT', 'VIEW_COUNT']
 
   // Read existing rows from the sheet (if it exists)
   const existingMap = new Map<string, any[]>() // videoId → row array
@@ -531,7 +532,12 @@ export function updateChannelVideosSheet(
           v.url,
           v.channelName,
           v.publishedAt,
+          v.viewCount ?? '',
         ])
+      } else {
+        // Update view count if we have a fresher value
+        const existing = existingMap.get(v.videoId)!
+        if (v.viewCount !== undefined) existing[5] = v.viewCount
       }
     }
   }
@@ -543,6 +549,7 @@ export function updateChannelVideosSheet(
     newVideo.url,
     newVideo.channelName,
     newVideo.publishedAt,
+    newVideo.viewCount ?? 0,
   ])
 
   // Sort: newly uploaded video first, then by publishedAt descending
@@ -562,6 +569,7 @@ export function updateChannelVideosSheet(
     { wch: 45 },  // YOUTUBE_URL
     { wch: 35 },  // CHANNEL
     { wch: 24 },  // PUBLISHED_AT
+    { wch: 14 },  // VIEW_COUNT
   ]
 
   // Freeze header row

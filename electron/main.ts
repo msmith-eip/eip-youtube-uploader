@@ -466,6 +466,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
           addLog('info', 'Upload', `User skipped duplicate: ${jobFileName}`)
           mainWindow?.webContents.send('upload:job-skipped', {
             index: i,
+            jobId: job.id,
             reason: `Skipped by user (duplicate of ${jobFileName})`,
             existingUrl: duplicate.youtubeUrl,
           })
@@ -477,7 +478,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
     }
 
     // Notify start
-    mainWindow?.webContents.send('upload:job-start', { index: i, job })
+    mainWindow?.webContents.send('upload:job-start', { index: i, jobId: job.id, job })
 
     const attemptUpload = async (attempt: number): Promise<void> => {
       // Refresh token if needed
@@ -490,10 +491,10 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
       const normalizedPath = job.filePath.trim()
       // ── OneDrive Files-On-Demand: detect placeholder and trigger download ──
       if (isOneDrivePlaceholder(normalizedPath)) {
-        mainWindow?.webContents.send('upload:job-syncing', { index: i, message: 'Syncing from OneDrive...' })
+        mainWindow?.webContents.send('upload:job-syncing', { index: i, jobId: job.id, message: 'Syncing from OneDrive...' })
         addLog('info', 'OneDrive', `Placeholder detected for job ${i}: ${normalizedPath}`)
         await hydrateOneDriveFile(normalizedPath, (msg) => {
-          mainWindow?.webContents.send('upload:job-syncing', { index: i, message: msg })
+          mainWindow?.webContents.send('upload:job-syncing', { index: i, jobId: job.id, message: msg })
         })
       }
       // Check file exists before attempting to stream it — gives a clear error instead of ENOENT
@@ -535,6 +536,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
             const progress = Math.round((evt.bytesRead / fileStat.size) * 100)
             mainWindow?.webContents.send('upload:progress', {
               index: i,
+              jobId: job.id,
               progress,
               bytesUploaded: evt.bytesRead,
               totalBytes: fileStat.size,
@@ -560,6 +562,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
 
       mainWindow?.webContents.send('upload:job-complete', {
         index: i,
+        jobId: job.id,
         videoId,
         youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
       })
@@ -578,6 +581,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
       // Auto-retry once after 3 seconds
       mainWindow?.webContents.send('upload:job-retrying', {
         index: i,
+        jobId: job.id,
         attempt: 1,
         error: err.message || 'Upload failed',
       })
@@ -590,6 +594,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
         addLog('error', 'Upload', `Failed: ${job.fileName || job.filePath}`, errMsg)
         mainWindow?.webContents.send('upload:job-error', {
           index: i,
+          jobId: job.id,
           error: errMsg,
           canRetry: true,
         })
@@ -1204,6 +1209,25 @@ ipcMain.handle('youtube:fetch-channel-videos', async (_event, channelId: string)
       if (pageCount >= 200) break
     } while (pageToken)
 
+    // Fetch view counts in batches of 50 using videos.list
+    const videoIds = videos.map((v: any) => v.videoId)
+    for (let i = 0; i < videoIds.length; i += 50) {
+      const batch = videoIds.slice(i, i + 50)
+      try {
+        const statsResp = await youtube.videos.list({
+          part: ['statistics'],
+          id: batch,
+        })
+        addQuota(QUOTA_COSTS.VIDEOS_LIST, `videos.list stats batch ${Math.floor(i / 50) + 1}`)
+        const statsItems = statsResp.data.items || []
+        for (const item of statsItems) {
+          const vid = videos.find((v: any) => v.videoId === item.id)
+          if (vid) vid.viewCount = parseInt(item.statistics?.viewCount || '0', 10)
+        }
+      } catch {
+        // If stats fetch fails (quota), continue without view counts
+      }
+    }
     addLog('info', 'ChannelSheet', `Fetched ${videos.length} videos for ${channelName}`)
     return { success: true, videos, channelName }
   } catch (err: any) {

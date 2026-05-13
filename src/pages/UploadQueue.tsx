@@ -66,22 +66,22 @@ export default function UploadQueue() {
   useEffect(() => {
     if (!window.electronAPI) return
 
-    window.electronAPI.upload.onJobStart(({ index }) => {
+    window.electronAPI.upload.onJobStart(({ index, jobId }: any) => {
       setUploadJobs(prev => prev.map((job, i) =>
-        i === index ? { ...job, status: 'uploading', progress: 0 } : job
+        (jobId ? job.id === jobId : i === index) ? { ...job, status: 'uploading', progress: 0 } : job
       ))
     })
 
-    window.electronAPI.upload.onProgress(({ index, progress, bytesUploaded }) => {
+    window.electronAPI.upload.onProgress(({ index, jobId, progress, bytesUploaded }: any) => {
       setUploadJobs(prev => prev.map((job, i) =>
-        i === index ? { ...job, progress, bytesUploaded } : job
+        (jobId ? job.id === jobId : i === index) ? { ...job, progress, bytesUploaded } : job
       ))
     })
 
-    window.electronAPI.upload.onJobComplete(({ index, videoId, youtubeUrl }) => {
+    window.electronAPI.upload.onJobComplete(({ index, jobId, videoId, youtubeUrl }: any) => {
       setUploadJobs(prev => {
         const updated: UploadJob[] = prev.map((job, i) =>
-          i === index ? { ...job, status: 'complete' as const, progress: 100, videoId, youtubeUrl } : job
+          (jobId ? job.id === jobId : i === index) ? { ...job, status: 'complete' as const, progress: 100, videoId, youtubeUrl } : job
         )
         uploadJobsRef.current = updated
         // Write back to Excel immediately after each successful upload
@@ -110,7 +110,7 @@ export default function UploadQueue() {
 
           // Update the Channel Videos sheet: add just the new video immediately (no API call)
           // The full channel sync happens once at end-of-queue to save quota
-          const completedJob = updated[index]
+          const completedJob = updated.find(j => jobId ? j.id === jobId : j.videoId === videoId) || updated[index]
           if (completedJob && videoId && youtubeUrl) {
             const newVideoEntry: ChannelVideoEntry = {
               videoId,
@@ -140,29 +140,29 @@ export default function UploadQueue() {
       })
     })
 
-    window.electronAPI.upload.onJobError(({ index, error, canRetry }) => {
+    window.electronAPI.upload.onJobError(({ index, jobId, error, canRetry }: any) => {
       setUploadJobs(prev => prev.map((job, i) =>
-        i === index ? { ...job, status: 'error', error, canRetry: canRetry || false } : job
+        (jobId ? job.id === jobId : i === index) ? { ...job, status: 'error', error, canRetry: canRetry || false } : job
       ))
     })
-    ;(window.electronAPI.upload as any).onJobRetrying?.(({ index, attempt, error }: any) => {
+    ;(window.electronAPI.upload as any).onJobRetrying?.(({ index, jobId, attempt, error }: any) => {
       setUploadJobs(prev => prev.map((job, i) =>
-        i === index ? { ...job, status: 'retrying', error: `Retrying... (attempt ${attempt}: ${error})` } : job
+        (jobId ? job.id === jobId : i === index) ? { ...job, status: 'retrying', error: `Retrying... (attempt ${attempt}: ${error})` } : job
       ))
     })
-    ;(window.electronAPI.upload as any).onJobSyncing?.(({ index, message }: any) => {
+    ;(window.electronAPI.upload as any).onJobSyncing?.(({ index, jobId, message }: any) => {
       setUploadJobs(prev => prev.map((job, i) =>
-        i === index ? { ...job, status: 'syncing', error: message } : job
+        (jobId ? job.id === jobId : i === index) ? { ...job, status: 'syncing', error: message } : job
       ))
     })
-    ;(window.electronAPI.upload as any).onJobSkipped?.(({ index, reason, existingUrl }: any) => {
+    ;(window.electronAPI.upload as any).onJobSkipped?.(({ index, jobId, reason, existingUrl }: any) => {
       setUploadJobs(prev => prev.map((job, i) =>
-        i === index ? { ...job, status: 'skipped', skipReason: reason, existingUrl } : job
+        (jobId ? job.id === jobId : i === index) ? { ...job, status: 'skipped', skipReason: reason, existingUrl } : job
       ))
     })
-    ;(window.electronAPI.upload as any).onJobPrivacyWarning?.(({ index }: any) => {
+    ;(window.electronAPI.upload as any).onJobPrivacyWarning?.(({ index, jobId }: any) => {
       setUploadJobs(prev => prev.map((job, i) =>
-        i === index ? { ...job, privacyForcedPrivate: true } : job
+        (jobId ? job.id === jobId : i === index) ? { ...job, privacyForcedPrivate: true } : job
       ))
       setShowPrivacyWarning(true)
     })
@@ -471,6 +471,41 @@ export default function UploadQueue() {
 
     setIsUploading(true)
     if (window.electronAPI) {
+      // ── Pre-upload: Build channel master list BEFORE uploading ──────────────────
+      // Fetch all existing videos for each unique channel and write to Channel Videos sheet
+      // This ensures we have a complete record even if quota runs out mid-upload
+      if (excelBase64Ref.current && excelFilePathRef.current && window.electronAPI.youtube?.fetchChannelVideos) {
+        const uniqueChannelIds = [...new Set(pendingJobs.map(j => j.channelId).filter(Boolean))] as string[]
+        for (const channelId of uniqueChannelIds) {
+          try {
+            showToast('info', 'Building channel video master list before upload...')
+            const resp = await window.electronAPI.youtube.fetchChannelVideos(channelId)
+            if (resp.success && resp.videos && resp.videos.length > 0) {
+              const channelJob = pendingJobs.find(j => j.channelId === channelId)
+              const allVideos: ChannelVideoEntry[] = resp.videos.map((v: any) => ({
+                videoId: v.videoId,
+                title: v.title,
+                url: v.url,
+                publishedAt: v.publishedAt,
+                channelName: v.channelName || channelJob?.channelName || '',
+                channelId: v.channelId || channelId,
+                viewCount: v.viewCount,
+              }))
+              // Use a placeholder anchor entry (will be replaced by real uploads)
+              const anchorEntry: ChannelVideoEntry = allVideos[0]
+              const sheetBuffer = updateChannelVideosSheet(excelBase64Ref.current, anchorEntry, allVideos)
+              const sheetArray = Array.from(new Uint8Array(sheetBuffer))
+              const sheetBase64 = bufferToBase64(sheetBuffer)
+              excelBase64Ref.current = sheetBase64
+              await window.electronAPI.fs.overwriteFile({ filePath: excelFilePathRef.current, data: sheetArray })
+              showToast('success', `Channel master list built: ${resp.videos.length} videos logged`)
+            }
+          } catch {
+            // If quota is exhausted, skip pre-upload sync and proceed with uploads
+            showToast('info', 'Quota limit reached — skipping pre-upload master list. Uploads will proceed.')
+          }
+        }
+      }
       await window.electronAPI.upload.start(pendingJobs)
     } else {
       // Demo mode simulation
