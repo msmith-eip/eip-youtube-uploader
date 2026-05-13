@@ -14,6 +14,17 @@ import type { ChannelVideoEntry } from '../utils/excelParser'
 
 type FilterStatus = 'all' | 'pending' | 'uploading' | 'complete' | 'error' | 'syncing'
 
+// Helper: convert ArrayBuffer to base64 safely (avoids stack overflow on large files)
+function bufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  const chunkSize = 8192
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  return btoa(binary)
+}
+
 export default function UploadQueue() {
   const { auth, channels, uploadJobs, setUploadJobs, isUploading, setIsUploading, settings } = useApp()
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all')
@@ -90,7 +101,7 @@ export default function UploadQueue() {
             const updatedBuffer = writeBackToExcel(_base64, results)
             const dataArray = Array.from(new Uint8Array(updatedBuffer))
             // Update the in-memory base64 so the next write-back builds on the latest file state
-            const updatedBase64 = btoa(String.fromCharCode(...new Uint8Array(updatedBuffer)))
+            const updatedBase64 = bufferToBase64(updatedBuffer)
             excelBase64Ref.current = updatedBase64
             window.electronAPI.fs.overwriteFile({ filePath: _path, data: dataArray }).catch(() => {})
           } catch (err: any) {
@@ -116,7 +127,7 @@ export default function UploadQueue() {
                 // Add just the new video — no API fetch, no quota cost
                 const sheetBuffer = updateChannelVideosSheet(currentBase64, newVideoEntry)
                 const sheetArray = Array.from(new Uint8Array(sheetBuffer))
-                const sheetBase64 = btoa(String.fromCharCode(...new Uint8Array(sheetBuffer)))
+                const sheetBase64 = bufferToBase64(sheetBuffer)
                 excelBase64Ref.current = sheetBase64
                 window.electronAPI.fs.overwriteFile({ filePath: currentPath, data: sheetArray }).catch(() => {})
               } catch (e: any) {
@@ -231,7 +242,7 @@ export default function UploadQueue() {
               if (!currentBase64 || !currentPath || !window.electronAPI) continue
               const sheetBuffer = updateChannelVideosSheet(currentBase64, anchorEntry, allVideos)
               const sheetArray = Array.from(new Uint8Array(sheetBuffer))
-              const sheetBase64 = btoa(String.fromCharCode(...new Uint8Array(sheetBuffer)))
+              const sheetBase64 = bufferToBase64(sheetBuffer)
               excelBase64Ref.current = sheetBase64
               await window.electronAPI.fs.overwriteFile({ filePath: currentPath, data: sheetArray })
             } catch {
@@ -429,7 +440,7 @@ export default function UploadQueue() {
     if (result.canceled || !result.filePath) return
 
     const buffer = generateExcelTemplate()
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
+    const base64 = bufferToBase64(buffer)
 
     // Use a data URL approach via a link
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })

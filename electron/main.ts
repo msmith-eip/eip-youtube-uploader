@@ -88,12 +88,28 @@ const store = new Store({
 })
 
 // ─── Quota Tracking ───────────────────────────────────────────────────────────
-// YouTube Data API v3 quota costs (units):
-//   videos.insert   = 1600 per upload
-//   channels.list   = 1
-//   videos.list     = 1
-//   playlistItems.list = 1
-// Daily limit: 10,000 units (resets at midnight Pacific Time)
+// YouTube Data API v3 quota costs (verified from Google docs, updated 2026-04-28):
+//   videos.insert          = 100 units per upload
+//   videos.list            = 1 unit
+//   videos.update          = 50 units
+//   thumbnails.set         = 50 units
+//   captions.insert        = 400 units
+//   playlistItems.insert   = 50 units
+//   channels.list          = 1 unit
+//   playlistItems.list     = 1 unit
+//   search.list            = 100 units
+// Daily limit: 10,000 units default (resets at midnight Pacific Time / 08:00 UTC)
+export const QUOTA_COSTS = {
+  VIDEOS_INSERT: 100,
+  VIDEOS_LIST: 1,
+  VIDEOS_UPDATE: 50,
+  THUMBNAILS_SET: 50,
+  CAPTIONS_INSERT: 400,
+  PLAYLIST_ITEMS_INSERT: 50,
+  CHANNELS_LIST: 1,
+  PLAYLIST_ITEMS_LIST: 1,
+  SEARCH_LIST: 100,
+} as const
 const QUOTA_DAILY_LIMIT = 10000
 
 function getQuotaResetDatePT(): string {
@@ -267,7 +283,7 @@ ipcMain.handle('youtube:get-channels', async () => {
       mine: true,
       maxResults: 50,
     })
-    addQuota(1, 'channels.list')
+    addQuota(QUOTA_COSTS.CHANNELS_LIST, 'channels.list')
     return { success: true, channels: response.data.items || [] }
   } catch (err: any) {
     return { success: false, error: err.message }
@@ -528,7 +544,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
       )
 
       const videoId = response.data.id
-      addQuota(1600, `videos.insert (${job.fileName || job.title})`)
+      addQuota(QUOTA_COSTS.VIDEOS_INSERT, `videos.insert (${job.fileName || job.title})`)
       const historyEntry = {
         id: videoId,
         title: job.title,
@@ -662,7 +678,7 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
       }
     )
     const videoId = response.data.id
-    addQuota(1600, `videos.insert/retry (${job.fileName || job.title})`)
+    addQuota(QUOTA_COSTS.VIDEOS_INSERT, `videos.insert/retry (${job.fileName || job.title})`)
     const history = (store.get('uploadHistory') as any[]) || []
     history.unshift({
       id: videoId,
@@ -746,7 +762,7 @@ ipcMain.handle('upload:force-upload-job', async (event, job: any) => {
       }
     )
     const videoId = response.data.id
-    addQuota(1600, `videos.insert/force (${job.fileName || job.title})`)
+    addQuota(QUOTA_COSTS.VIDEOS_INSERT, `videos.insert/force (${job.fileName || job.title})`)
     const history = (store.get('uploadHistory') as any[]) || []
     history.unshift({
       id: videoId,
@@ -854,7 +870,7 @@ async function checkPrivacyForcedPrivate(
 ): Promise<void> {
   try {
     const res = await youtube.videos.list({ part: ['status'], id: [videoId] })
-    addQuota(1, 'videos.list (privacy check)')
+    addQuota(QUOTA_COSTS.VIDEOS_LIST, 'videos.list (privacy check)')
     const actual = res?.data?.items?.[0]?.status?.privacyStatus
     if (actual && actual === 'private' && intendedPrivacy !== 'private') {
       addLog('warn', 'Upload',
@@ -1062,7 +1078,7 @@ ipcMain.handle('youtube:export-all-videos', async () => {
       mine: true,
       maxResults: 50,
     })
-    addQuota(1, 'channels.list (export)')
+    addQuota(QUOTA_COSTS.CHANNELS_LIST, 'channels.list (export)')
     const channels = channelsResp.data.items || []
     if (channels.length === 0) return { success: false, error: 'No channels found' }
 
@@ -1090,7 +1106,7 @@ ipcMain.handle('youtube:export-all-videos', async () => {
           maxResults: 50,
           pageToken: pageToken || undefined,
         })
-        addQuota(1, `playlistItems.list (${channelName} page ${pageCount + 1})`)
+        addQuota(QUOTA_COSTS.PLAYLIST_ITEMS_LIST, `playlistItems.list (${channelName} page ${pageCount + 1})`)
         const items = playlistResp.data.items || []
 
         for (const item of items) {
@@ -1149,7 +1165,7 @@ ipcMain.handle('youtube:fetch-channel-videos', async (_event, channelId: string)
       id: [channelId],
       maxResults: 1,
     })
-    addQuota(1, 'channels.list (channel videos sheet)')
+    addQuota(QUOTA_COSTS.CHANNELS_LIST, 'channels.list (channel videos sheet)')
     const channel = channelResp.data.items?.[0]
     if (!channel) return { success: false, error: 'Channel not found' }
     const channelName = channel.snippet?.title || 'Unknown Channel'
@@ -1168,7 +1184,7 @@ ipcMain.handle('youtube:fetch-channel-videos', async (_event, channelId: string)
         maxResults: 50,
         pageToken: pageToken || undefined,
       })
-      addQuota(1, `playlistItems.list (channel sheet page ${pageCount + 1})`)
+      addQuota(QUOTA_COSTS.PLAYLIST_ITEMS_LIST, `playlistItems.list (channel sheet page ${pageCount + 1})`)
       const items = playlistResp.data.items || []
       for (const item of items) {
         const videoId = item.contentDetails?.videoId
