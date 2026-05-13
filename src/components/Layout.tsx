@@ -20,12 +20,17 @@ const navItems = [
   { path: '/settings', icon: Settings,         label: 'Settings' },
 ]
 
-// Quota thresholds
-const quotaPct = (used: number, limit: number) => Math.min(100, Math.round((used / limit) * 100))
+const quotaPct   = (used: number, limit: number) => Math.min(100, Math.round((used / limit) * 100))
 const quotaColor = (pct: number) =>
-  pct >= 80 ? '#B22234' : pct >= 50 ? '#C9A961' : '#3C3B6E'
+  pct >= 80 ? '#f43f5e' : pct >= 50 ? '#C9A961' : '#4ade80'
 const quotaLabel = (pct: number) =>
   pct >= 80 ? 'Critical' : pct >= 50 ? 'Caution' : 'Healthy'
+const quotaBarBg = (pct: number) =>
+  pct >= 80
+    ? 'linear-gradient(90deg, #B22234, #f43f5e)'
+    : pct >= 50
+    ? 'linear-gradient(90deg, #b08a3a, #C9A961)'
+    : 'linear-gradient(90deg, #1a4480, #2d5a9e)'
 
 export default function Layout({ children }: LayoutProps) {
   const location  = useLocation()
@@ -36,21 +41,16 @@ export default function Layout({ children }: LayoutProps) {
   const uploadingCount = uploadJobs.filter(j => j.status === 'uploading').length
   const completeCount  = uploadJobs.filter(j => j.status === 'complete').length
 
-  // ── Auto-updater state ────────────────────────────────────────────────────
-  const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'ready'>('idle')
-  const [updateInfo,  setUpdateInfo]  = useState<{ version?: string; percent?: number } | null>(null)
+  const [updateState,      setUpdateState]      = useState<'idle' | 'checking' | 'available' | 'downloading' | 'ready'>('idle')
+  const [updateInfo,       setUpdateInfo]       = useState<{ version?: string; percent?: number } | null>(null)
   const [showUpdateBanner, setShowUpdateBanner] = useState(false)
   const [currentVersion,   setCurrentVersion]   = useState<string>('')
+  const [quota,            setQuota]            = useState<{ usedUnits: number; resetDate: string; dailyLimit: number } | null>(null)
+  const [quotaCountdown,   setQuotaCountdown]   = useState<string>('')
 
-  // ── Quota state ───────────────────────────────────────────────────────────
-  const [quota, setQuota] = useState<{ usedUnits: number; resetDate: string; dailyLimit: number } | null>(null)
-
-  // ── Quota reset countdown ─────────────────────────────────────────────────
-  const [quotaCountdown, setQuotaCountdown] = useState<string>('')
   useEffect(() => {
     const tick = () => {
       const now = new Date()
-      // Midnight Pacific Time
       const ptMidnight = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }))
       ptMidnight.setHours(24, 0, 0, 0)
       const diffMs = ptMidnight.getTime() - new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })).getTime()
@@ -78,23 +78,12 @@ export default function Layout({ children }: LayoutProps) {
       if (res?.version) setCurrentVersion(res.version)
     }).catch(() => {})
     const api = (window.electronAPI as any).updater
-    api.onChecking(()         => setUpdateState('checking'))
-    api.onAvailable((info: any) => {
-      setUpdateState('available')
-      setUpdateInfo({ version: info.version })
-      setShowUpdateBanner(true)
-    })
-    api.onNotAvailable(()    => setUpdateState('idle'))
-    api.onDownloadProgress((p: any) => {
-      setUpdateState('downloading')
-      setUpdateInfo(prev => ({ ...prev, percent: Math.round(p.percent) }))
-    })
-    api.onDownloaded((info: any) => {
-      setUpdateState('ready')
-      setUpdateInfo(prev => ({ ...prev, version: info.version }))
-      setShowUpdateBanner(true)
-    })
-    api.onError(() => setUpdateState('idle'))
+    api.onChecking(()            => setUpdateState('checking'))
+    api.onAvailable((info: any)  => { setUpdateState('available'); setUpdateInfo({ version: info.version }); setShowUpdateBanner(true) })
+    api.onNotAvailable(()        => setUpdateState('idle'))
+    api.onDownloadProgress((p: any) => { setUpdateState('downloading'); setUpdateInfo(prev => ({ ...prev, percent: Math.round(p.percent) })) })
+    api.onDownloaded((info: any) => { setUpdateState('ready'); setUpdateInfo(prev => ({ ...prev, version: info.version })); setShowUpdateBanner(true) })
+    api.onError(()               => setUpdateState('idle'))
     return () => api.removeListeners()
   }, [])
 
@@ -110,49 +99,49 @@ export default function Layout({ children }: LayoutProps) {
     setAuth({ authenticated: false })
   }
 
-  const pct   = quota ? quotaPct(quota.usedUnits, quota.dailyLimit) : 0
+  const pct    = quota ? quotaPct(quota.usedUnits, quota.dailyLimit) : 0
   const qColor = quotaColor(pct)
 
   return (
-    <div className="flex w-full h-full" style={{ background: '#FAF6EE' }}>
+    <div className="flex w-full h-full" style={{ background: '#061540' }}>
 
       {/* ── Sidebar ─────────────────────────────────────────────────────────── */}
-      <div className="w-60 flex-shrink-0 flex flex-col border-r border-surface-divider"
-           style={{ background: '#FFFFFF', boxShadow: '2px 0 8px rgba(28,25,20,0.06)' }}>
+      <div className="w-60 flex-shrink-0 flex flex-col"
+           style={{ background: '#030d2b', borderRight: '1px solid rgba(45,90,158,0.35)' }}>
 
         {/* Logo / Titlebar */}
-        <div className="titlebar-drag h-12 flex items-center px-4 border-b border-surface-divider flex-shrink-0"
-             style={{ background: '#3C3B6E' }}>
+        <div className="titlebar-drag h-12 flex items-center px-4 flex-shrink-0"
+             style={{ background: '#030d2b', borderBottom: '1px solid rgba(45,90,158,0.35)' }}>
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                 style={{ background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)' }}>
+                 style={{ background: 'linear-gradient(135deg, #B22234, #e11d48)', boxShadow: '0 0 12px rgba(178,34,52,0.4)' }}>
               <Shield size={15} className="text-white" />
             </div>
             <div>
               <div className="text-sm font-bold text-white leading-tight tracking-wide">EIP Uploader</div>
-              <div className="text-[10px] leading-tight" style={{ color: 'rgba(255,255,255,0.6)' }}>Bulk Video Upload</div>
+              <div className="text-[10px] leading-tight" style={{ color: 'rgba(255,255,255,0.45)' }}>Bulk Video Upload</div>
             </div>
           </div>
         </div>
 
         {/* Patriotic stripe */}
-        <div className="stripe-accent flex-shrink-0" />
+        <div style={{ height: '3px', background: 'linear-gradient(90deg, #B22234 33.3%, #FFFFFF 33.3% 66.6%, #1a4480 66.6%)', flexShrink: 0 }} />
 
         {/* Account Info */}
-        <div className="px-3 py-3 border-b border-surface-divider flex-shrink-0">
+        <div className="px-3 py-3 flex-shrink-0" style={{ borderBottom: '1px solid rgba(45,90,158,0.25)' }}>
           <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg"
-               style={{ background: '#FAF6EE', border: '1px solid #D4CFC4' }}>
+               style={{ background: 'rgba(26,68,128,0.25)', border: '1px solid rgba(45,90,158,0.35)' }}>
             <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 font-bold text-white text-sm"
-                 style={{ background: '#3C3B6E' }}>
+                 style={{ background: 'linear-gradient(135deg, #1a4480, #2d5a9e)' }}>
               {auth.email ? auth.email[0].toUpperCase() : 'E'}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-semibold text-surface-ink truncate">
+              <div className="text-xs font-semibold text-white truncate">
                 {auth.email || 'Connected'}
               </div>
               <div className="flex items-center gap-1 mt-0.5">
-                <Wifi size={9} style={{ color: '#16a34a' }} />
-                <span className="text-[10px] font-medium" style={{ color: '#16a34a' }}>Authenticated</span>
+                <Wifi size={9} style={{ color: '#4ade80' }} />
+                <span className="text-[10px] font-medium" style={{ color: '#4ade80' }}>Authenticated</span>
               </div>
             </div>
           </div>
@@ -174,11 +163,11 @@ export default function Layout({ children }: LayoutProps) {
                 <span className="flex-1 text-left">{label}</span>
                 {showBadge && (
                   <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white"
-                        style={{ background: isUploading ? '#3C3B6E' : '#6b6358' }}>
+                        style={{ background: isUploading ? '#B22234' : 'rgba(45,90,158,0.6)' }}>
                     {isUploading ? uploadingCount + pendingCount : pendingCount}
                   </span>
                 )}
-                {isActive && <ChevronRight size={12} style={{ color: '#3C3B6E' }} className="flex-shrink-0" />}
+                {isActive && <ChevronRight size={12} style={{ color: '#fb7185' }} className="flex-shrink-0" />}
               </button>
             )
           })}
@@ -187,17 +176,18 @@ export default function Layout({ children }: LayoutProps) {
         {/* Upload Status Indicator */}
         {isUploading && (
           <div className="px-3 pb-2 flex-shrink-0">
-            <div className="px-3 py-2.5 rounded-lg" style={{ background: '#eef0f8', border: '1px solid #aab1de' }}>
+            <div className="px-3 py-2.5 rounded-lg"
+                 style={{ background: 'rgba(178,34,52,0.12)', border: '1px solid rgba(178,34,52,0.3)' }}>
               <div className="flex items-center gap-2 mb-1.5">
                 <motion.div
                   className="w-2 h-2 rounded-full"
-                  style={{ background: '#3C3B6E' }}
+                  style={{ background: '#f43f5e' }}
                   animate={{ opacity: [1, 0.3, 1] }}
                   transition={{ duration: 1.5, repeat: Infinity }}
                 />
-                <span className="text-xs font-semibold" style={{ color: '#3C3B6E' }}>Uploading…</span>
+                <span className="text-xs font-semibold" style={{ color: '#fb7185' }}>Uploading…</span>
               </div>
-              <div className="text-[10px] text-surface-muted mb-1.5">
+              <div className="text-[10px] mb-1.5" style={{ color: '#9db1d5' }}>
                 {completeCount} / {uploadJobs.length} complete
               </div>
               <div className="progress-bar">
@@ -213,25 +203,26 @@ export default function Layout({ children }: LayoutProps) {
         {/* ── Quota Widget ── */}
         {quota !== null && (
           <div className="px-3 pb-2 flex-shrink-0">
-            <div className="px-3 py-2.5 rounded-lg" style={{ background: '#FAF6EE', border: '1px solid #D4CFC4' }}>
+            <div className="px-3 py-2.5 rounded-lg"
+                 style={{ background: 'rgba(15,47,97,0.6)', border: '1px solid rgba(45,90,158,0.35)' }}>
               <div className="flex items-center gap-1.5 mb-1.5">
                 <Gauge size={11} style={{ color: qColor }} />
-                <span className="text-[10px] font-bold text-surface-muted uppercase tracking-wider">API Quota</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#7491c4' }}>API Quota</span>
                 <span className="ml-auto text-[10px] font-bold tabular-nums" style={{ color: qColor }}>
                   {pct}% · {quotaLabel(pct)}
                 </span>
               </div>
-              <div className="w-full rounded-full h-2 mb-1.5" style={{ background: '#D4CFC4' }}>
+              <div className="w-full rounded-full h-2 mb-1.5" style={{ background: 'rgba(26,68,128,0.4)' }}>
                 <div
                   className="h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${pct}%`, background: qColor }}
+                  style={{ width: `${pct}%`, background: quotaBarBg(pct) }}
                 />
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-[9px] text-surface-subtle tabular-nums">
+                <span className="text-[9px] tabular-nums" style={{ color: '#4f73b3' }}>
                   {quota.usedUnits.toLocaleString()} / {quota.dailyLimit.toLocaleString()} units
                 </span>
-                <span className="text-[9px] text-surface-subtle tabular-nums">
+                <span className="text-[9px] tabular-nums" style={{ color: '#4f73b3' }}>
                   resets {quotaCountdown}
                 </span>
               </div>
@@ -243,87 +234,117 @@ export default function Layout({ children }: LayoutProps) {
         <div className="px-3 pb-2 flex-shrink-0">
           <AnimatePresence mode="wait">
             {updateState === 'available' && (
-              <motion.div key="available" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-2">
-                <div className="px-3 py-2.5 rounded-lg" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <Sparkles size={11} style={{ color: '#16a34a' }} />
-                    <span className="text-[11px] font-bold" style={{ color: '#16a34a' }}>Update Available</span>
+              <motion.div key="available"
+                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden mb-2">
+                <div className="px-3 py-2.5 rounded-lg"
+                     style={{ background: 'rgba(26,68,128,0.3)', border: '1px solid rgba(45,90,158,0.5)' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles size={11} style={{ color: '#C9A961' }} />
+                      <span className="text-[10px] font-bold text-white">Update Available</span>
+                    </div>
+                    <button onClick={() => setShowUpdateBanner(false)}>
+                      <X size={11} style={{ color: '#7491c4' }} />
+                    </button>
                   </div>
-                  <div className="text-[10px] text-surface-muted mb-2">v{updateInfo?.version} is ready to download</div>
+                  <p className="text-[10px] mb-2" style={{ color: '#9db1d5' }}>v{updateInfo?.version} is ready</p>
                   <button onClick={handleDownloadUpdate}
-                    className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-white text-[11px] font-semibold transition-all"
-                    style={{ background: '#16a34a' }}>
-                    <Download size={11} /> Download Update
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold text-white"
+                    style={{ background: 'linear-gradient(135deg, #B22234, #e11d48)' }}>
+                    <Download size={10} /> Download Update
                   </button>
                 </div>
               </motion.div>
             )}
+
             {updateState === 'downloading' && (
-              <motion.div key="downloading" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-2">
-                <div className="px-3 py-2.5 rounded-lg" style={{ background: '#eef0f8', border: '1px solid #aab1de' }}>
-                  <div className="flex items-center gap-1.5 mb-1">
+              <motion.div key="downloading"
+                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden mb-2">
+                <div className="px-3 py-2.5 rounded-lg"
+                     style={{ background: 'rgba(26,68,128,0.3)', border: '1px solid rgba(45,90,158,0.5)' }}>
+                  <div className="flex items-center gap-1.5 mb-2">
                     <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
-                      <Download size={11} style={{ color: '#3C3B6E' }} />
+                      <RefreshCw size={11} style={{ color: '#7491c4' }} />
                     </motion.div>
-                    <span className="text-[11px] font-bold" style={{ color: '#3C3B6E' }}>Downloading…</span>
-                    <span className="ml-auto text-[10px] text-surface-muted tabular-nums">{updateInfo?.percent ?? 0}%</span>
+                    <span className="text-[10px] font-bold text-white">Downloading…</span>
+                    <span className="ml-auto text-[10px] tabular-nums" style={{ color: '#C9A961' }}>
+                      {updateInfo?.percent ?? 0}%
+                    </span>
                   </div>
-                  <div className="progress-bar mt-1">
-                    <motion.div className="progress-fill h-full" animate={{ width: `${updateInfo?.percent ?? 0}%` }} transition={{ duration: 0.3 }} />
+                  <div className="progress-bar">
+                    <div className="progress-fill" style={{ width: `${updateInfo?.percent ?? 0}%` }} />
                   </div>
                 </div>
               </motion.div>
             )}
+
             {updateState === 'ready' && (
-              <motion.div key="ready" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden mb-2">
-                <div className="px-3 py-2.5 rounded-lg" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <Sparkles size={11} style={{ color: '#16a34a' }} />
-                    <span className="text-[11px] font-bold" style={{ color: '#16a34a' }}>Ready to Install</span>
+              <motion.div key="ready"
+                initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden mb-2">
+                <div className="px-3 py-2.5 rounded-lg"
+                     style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)' }}>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <ArrowDownToLine size={11} style={{ color: '#4ade80' }} />
+                    <span className="text-[10px] font-bold text-white">Ready to Install</span>
                   </div>
-                  <div className="text-[10px] text-surface-muted mb-2">v{updateInfo?.version} downloaded</div>
+                  <p className="text-[10px] mb-2" style={{ color: '#9db1d5' }}>v{updateInfo?.version} downloaded</p>
                   <button onClick={handleInstallUpdate}
-                    className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-white text-[11px] font-bold transition-all"
-                    style={{ background: '#16a34a' }}>
-                    <ArrowDownToLine size={11} /> Restart &amp; Install
+                    className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold text-white"
+                    style={{ background: 'linear-gradient(135deg, #15803d, #22c55e)' }}>
+                    <ArrowDownToLine size={10} /> Restart & Install
                   </button>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
 
-          {(updateState === 'idle' || updateState === 'checking') && (
-            <button
-              onClick={handleCheckForUpdates}
-              disabled={updateState === 'checking'}
-              className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[10px] font-medium transition-all disabled:opacity-50 mb-0.5"
-              style={{ color: '#8c8476' }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#FAF6EE')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-            >
-              <motion.div
-                animate={updateState === 'checking' ? { rotate: 360 } : { rotate: 0 }}
-                transition={updateState === 'checking' ? { duration: 1, repeat: Infinity, ease: 'linear' } : {}}
-              >
+          {/* Check for Updates button */}
+          <button
+            onClick={handleCheckForUpdates}
+            disabled={updateState === 'checking' || updateState === 'downloading'}
+            className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-medium transition-all duration-200"
+            style={{
+              background: 'rgba(26,68,128,0.25)',
+              border: '1px solid rgba(45,90,158,0.4)',
+              color: updateState === 'checking' ? '#7491c4' : '#9db1d5',
+            }}
+          >
+            {updateState === 'checking' ? (
+              <>
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
+                  <RefreshCw size={10} />
+                </motion.div>
+                Checking…
+              </>
+            ) : (
+              <>
                 <RefreshCw size={10} />
-              </motion.div>
-              {updateState === 'checking' ? 'Checking for updates…' : 'Check for updates'}
-            </button>
-          )}
+                Check for Updates
+              </>
+            )}
+          </button>
+
+          {/* Version */}
           {currentVersion && (
-            <p className="text-center text-[9px] mt-0.5 mb-1" style={{ color: '#b5ae9f' }}>v{currentVersion}</p>
+            <p className="text-center text-[9px] mt-1.5 tabular-nums" style={{ color: '#2d5a9e' }}>
+              v{currentVersion}
+            </p>
           )}
         </div>
 
         {/* Sign Out */}
-        <div className="px-3 pb-4 border-t border-surface-divider pt-3 flex-shrink-0">
+        <div className="px-3 pb-3 flex-shrink-0" style={{ borderTop: '1px solid rgba(45,90,158,0.25)' }}>
           <button
             onClick={handleLogout}
-            className="nav-item w-full"
-            onMouseEnter={e => { e.currentTarget.style.color = '#B22234'; e.currentTarget.style.background = '#fdf2f4' }}
-            onMouseLeave={e => { e.currentTarget.style.color = ''; e.currentTarget.style.background = '' }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 mt-2"
+            style={{ color: '#7491c4' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#fb7185'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(178,34,52,0.12)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#7491c4'; (e.currentTarget as HTMLButtonElement).style.background = 'transparent' }}
           >
-            <LogOut size={15} />
+            <LogOut size={14} />
             <span>Sign Out</span>
           </button>
         </div>
@@ -331,49 +352,21 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* ── Main Content ─────────────────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Title bar */}
-        <div className="flex-shrink-0">
-          <div className="titlebar-drag h-10 border-b border-surface-divider flex items-center px-5"
-               style={{ background: '#FFFFFF' }}>
-            <span className="text-xs font-semibold text-surface-muted tracking-wide uppercase">
-              {navItems.find(n => n.path === location.pathname)?.label || 'EIP Video Uploader'}
-            </span>
-          </div>
-
-          {/* Update banner */}
-          <AnimatePresence>
-            {showUpdateBanner && (updateState === 'available' || updateState === 'ready') && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-                <div className="flex items-center gap-3 px-5 py-2 border-b" style={{ background: '#f0fdf4', borderColor: '#bbf7d0' }}>
-                  <Sparkles size={14} style={{ color: '#16a34a' }} className="flex-shrink-0" />
-                  <span className="text-xs font-medium flex-1" style={{ color: '#16a34a' }}>
-                    {updateState === 'ready'
-                      ? `v${updateInfo?.version} is downloaded and ready to install`
-                      : `v${updateInfo?.version} is available — click "Download Update" in the sidebar`}
-                  </span>
-                  {updateState === 'ready' && (
-                    <button onClick={handleInstallUpdate}
-                      className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-white text-xs font-bold transition-all"
-                      style={{ background: '#16a34a' }}>
-                      <ArrowDownToLine size={12} /> Restart &amp; Install
-                    </button>
-                  )}
-                  <button onClick={() => setShowUpdateBanner(false)} className="text-surface-muted hover:text-surface-ink transition-colors">
-                    <X size={14} />
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+        {/* Top bar */}
+        <div className="titlebar-drag h-10 flex items-center px-4 flex-shrink-0"
+             style={{ background: '#0a2050', borderBottom: '1px solid rgba(45,90,158,0.35)' }}>
+          <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#4f73b3' }}>
+            {navItems.find(n => n.path === location.pathname)?.label ?? 'EIP Uploader'}
+          </span>
         </div>
 
         {/* Page content */}
-        <div className="flex-1 overflow-auto" style={{ background: '#FAF6EE' }}>
+        <div className="flex-1 overflow-auto" style={{ background: '#061540' }}>
           <motion.div
             key={location.pathname}
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.18 }}
+            transition={{ duration: 0.2 }}
             className="h-full"
           >
             {children}

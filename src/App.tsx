@@ -118,23 +118,25 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-surface-cream">
+      <div className="w-full h-full flex items-center justify-center" style={{ background: '#030d2b' }}>
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           className="flex flex-col items-center gap-4"
         >
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-600 to-brand-500 flex items-center justify-center shadow-glow">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+               style={{ background: 'linear-gradient(135deg, #B22234, #e11d48)', boxShadow: '0 0 30px rgba(178,34,52,0.5)' }}>
             <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
               <path d="M8 8L24 16L8 24V8Z" fill="white" />
             </svg>
           </div>
-          <p className="text-sm font-semibold text-surface-muted tracking-wide">EIP Video Uploader</p>
+          <p className="text-sm font-semibold tracking-wide" style={{ color: '#7491c4' }}>EIP Video Uploader</p>
           <div className="flex gap-1">
             {[0, 1, 2].map(i => (
               <motion.div
                 key={i}
-                className="w-2 h-2 rounded-full bg-brand-600"
+                className="w-2 h-2 rounded-full"
+                style={{ background: '#B22234' }}
                 animate={{ opacity: [0.3, 1, 0.3] }}
                 transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
               />

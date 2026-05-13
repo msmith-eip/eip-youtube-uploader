@@ -37,20 +37,20 @@ export default function AuthScreen() {
   ]
 
   return (
-    <div className="w-full h-full flex overflow-hidden" style={{ background: '#FAF6EE' }}>
+    <div className="w-full h-full flex overflow-hidden" style={{ background: '#030d2b' }}>
       {/* Titlebar drag area */}
       <div className="titlebar-drag fixed top-0 left-0 right-0 h-10 z-50" />
 
       {/* ── Left Panel — Branding ─────────────────────────────────────────── */}
       <div className="flex-1 relative flex flex-col items-center justify-center p-12 overflow-hidden">
 
-        {/* Subtle star pattern background */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-5">
-          {[...Array(24)].map((_, i) => (
+        {/* Star pattern background */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden" style={{ opacity: 0.06 }}>
+          {[...Array(30)].map((_, i) => (
             <Star
               key={i}
-              size={i % 3 === 0 ? 14 : 10}
-              fill="#3C3B6E"
+              size={i % 3 === 0 ? 16 : 10}
+              fill="#FFFFFF"
               stroke="none"
               style={{
                 position: 'absolute',
@@ -63,12 +63,12 @@ export default function AuthScreen() {
 
         {/* Patriotic gradient orbs */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-32 -left-32 w-80 h-80 rounded-full blur-3xl opacity-10"
-               style={{ background: '#3C3B6E' }} />
-          <div className="absolute -bottom-32 -right-32 w-80 h-80 rounded-full blur-3xl opacity-10"
-               style={{ background: '#B22234' }} />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 rounded-full blur-2xl opacity-5"
-               style={{ background: '#C9A961' }} />
+          <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full blur-3xl"
+               style={{ background: '#1a4480', opacity: 0.25 }} />
+          <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full blur-3xl"
+               style={{ background: '#B22234', opacity: 0.2 }} />
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full blur-2xl"
+               style={{ background: '#C9A961', opacity: 0.05 }} />
         </div>
 
         <motion.div
@@ -84,20 +84,20 @@ export default function AuthScreen() {
             transition={{ delay: 0.1, duration: 0.5 }}
             className="mb-6"
           >
-            <div className="w-20 h-20 rounded-2xl flex items-center justify-center shadow-glow"
-                 style={{ background: 'linear-gradient(135deg, #3C3B6E 0%, #B22234 100%)' }}>
+            <div className="w-20 h-20 rounded-2xl flex items-center justify-center"
+                 style={{ background: 'linear-gradient(135deg, #B22234, #e11d48)', boxShadow: '0 0 40px rgba(178,34,52,0.5), 0 0 80px rgba(178,34,52,0.2)' }}>
               <Shield size={36} className="text-white" />
             </div>
             {/* Gold accent bar */}
-            <div className="mt-2 mx-auto h-1 w-12 rounded-full" style={{ background: '#C9A961' }} />
+            <div className="mt-3 mx-auto h-0.5 w-16 rounded-full" style={{ background: 'linear-gradient(90deg, transparent, #C9A961, transparent)' }} />
           </motion.div>
 
           <motion.h1
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-3xl font-bold mb-1"
-            style={{ color: '#1C1C1C', fontFamily: 'Georgia, serif' }}
+            className="text-3xl font-bold mb-1 text-white"
+            style={{ fontFamily: 'Georgia, serif', textShadow: '0 0 30px rgba(255,255,255,0.1)' }}
           >
             EIP Video Uploader
           </motion.h1>
@@ -117,7 +117,7 @@ export default function AuthScreen() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
             className="text-sm mb-8 leading-relaxed"
-            style={{ color: '#6B6B6B' }}
+            style={{ color: '#7491c4' }}
           >
             Bulk video upload platform for EIP brand channels.
             Upload hundreds of state-specific ad creatives with ease.
@@ -137,14 +137,14 @@ export default function AuthScreen() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.4 + i * 0.1 }}
                 className="flex items-center gap-3 px-4 py-3 rounded-xl"
-                style={{ background: '#FFFFFF', border: '1px solid #D4CFC4', boxShadow: '0 1px 4px rgba(28,25,20,0.06)' }}
+                style={{ background: 'rgba(26,68,128,0.25)', border: '1px solid rgba(45,90,158,0.4)' }}
               >
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                     style={{ background: '#eef0f8' }}>
-                  <Icon size={15} style={{ color: '#3C3B6E' }} />
+                     style={{ background: 'rgba(178,34,52,0.2)', border: '1px solid rgba(178,34,52,0.3)' }}>
+                  <Icon size={15} style={{ color: '#fb7185' }} />
                 </div>
-                <span className="text-sm font-medium flex-1 text-left" style={{ color: '#1C1C1C' }}>{text}</span>
-                <CheckCircle size={14} style={{ color: '#16a34a' }} className="flex-shrink-0" />
+                <span className="text-sm font-medium flex-1 text-left text-white">{text}</span>
+                <CheckCircle size={14} style={{ color: '#4ade80' }} className="flex-shrink-0" />
               </motion.div>
             ))}
           </motion.div>
@@ -154,7 +154,7 @@ export default function AuthScreen() {
             animate={{ opacity: 1 }}
             transition={{ delay: 0.7 }}
             className="text-xs"
-            style={{ color: '#9B9B9B' }}
+            style={{ color: '#2d5a9e' }}
           >
             Supports 11 EIP brand channels including @MedicareCompared, @eliteinsurancepartners, and more
           </motion.p>
@@ -163,14 +163,13 @@ export default function AuthScreen() {
 
       {/* Vertical divider with flag stripe */}
       <div className="flex-shrink-0 w-px relative">
-        <div className="absolute inset-0" style={{ background: '#D4CFC4' }} />
-        <div className="absolute top-0 bottom-0 left-0 w-px"
-             style={{ background: 'linear-gradient(180deg, #3C3B6E 33%, #FFFFFF 33% 66%, #B22234 66%)' }} />
+        <div className="absolute inset-0"
+             style={{ background: 'linear-gradient(180deg, #B22234 33%, #FFFFFF 33% 66%, #1a4480 66%)' }} />
       </div>
 
       {/* ── Right Panel — Login ───────────────────────────────────────────── */}
       <div className="w-96 flex-shrink-0 flex flex-col items-center justify-center p-8"
-           style={{ background: '#FFFFFF', borderLeft: '1px solid #D4CFC4' }}>
+           style={{ background: '#0a2050', borderLeft: '1px solid rgba(45,90,158,0.35)' }}>
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -180,12 +179,12 @@ export default function AuthScreen() {
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-3">
-              <div className="h-5 w-1 rounded-full" style={{ background: '#B22234' }} />
-              <h2 className="text-xl font-bold" style={{ color: '#1C1C1C', fontFamily: 'Georgia, serif' }}>
+              <div className="h-5 w-1 rounded-full" style={{ background: '#B22234', boxShadow: '0 0 8px rgba(178,34,52,0.6)' }} />
+              <h2 className="text-xl font-bold text-white" style={{ fontFamily: 'Georgia, serif' }}>
                 Sign in to continue
               </h2>
             </div>
-            <p className="text-sm leading-relaxed" style={{ color: '#6B6B6B' }}>
+            <p className="text-sm leading-relaxed" style={{ color: '#7491c4' }}>
               Connect your Google account to access your YouTube brand channels.
             </p>
           </div>
@@ -196,10 +195,10 @@ export default function AuthScreen() {
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               className="flex items-start gap-2 p-3 rounded-lg mb-4"
-              style={{ background: '#fdf2f4', border: '1px solid #f8c9d0' }}
+              style={{ background: 'rgba(178,34,52,0.15)', border: '1px solid rgba(178,34,52,0.4)' }}
             >
-              <AlertCircle size={16} style={{ color: '#B22234' }} className="flex-shrink-0 mt-0.5" />
-              <p className="text-xs" style={{ color: '#B22234' }}>{error}</p>
+              <AlertCircle size={16} style={{ color: '#fb7185' }} className="flex-shrink-0 mt-0.5" />
+              <p className="text-xs" style={{ color: '#fb7185' }}>{error}</p>
             </motion.div>
           )}
 
@@ -209,12 +208,13 @@ export default function AuthScreen() {
             disabled={loading}
             className="w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-xl font-semibold transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed mb-6"
             style={{
-              background: loading ? '#322f5c' : '#3C3B6E',
+              background: loading
+                ? 'rgba(178,34,52,0.6)'
+                : 'linear-gradient(135deg, #B22234, #e11d48)',
               color: '#FFFFFF',
-              boxShadow: '0 2px 8px rgba(60,59,110,0.3)',
+              boxShadow: '0 0 20px rgba(178,34,52,0.4)',
+              border: '1px solid rgba(178,34,52,0.5)',
             }}
-            onMouseEnter={e => !loading && (e.currentTarget.style.background = '#322f5c')}
-            onMouseLeave={e => !loading && (e.currentTarget.style.background = '#3C3B6E')}
           >
             {loading ? (
               <>
@@ -235,12 +235,13 @@ export default function AuthScreen() {
           </button>
 
           {/* Security note */}
-          <div className="p-4 rounded-xl" style={{ background: '#FAF6EE', border: '1px solid #D4CFC4' }}>
+          <div className="p-4 rounded-xl"
+               style={{ background: 'rgba(26,68,128,0.2)', border: '1px solid rgba(45,90,158,0.35)' }}>
             <div className="flex items-start gap-2.5">
-              <Shield size={15} style={{ color: '#3C3B6E' }} className="flex-shrink-0 mt-0.5" />
+              <Shield size={15} style={{ color: '#C9A961' }} className="flex-shrink-0 mt-0.5" />
               <div>
-                <p className="text-xs font-semibold mb-1" style={{ color: '#1C1C1C' }}>Secure &amp; Private</p>
-                <p className="text-xs leading-relaxed" style={{ color: '#6B6B6B' }}>
+                <p className="text-xs font-semibold mb-1 text-white">Secure &amp; Private</p>
+                <p className="text-xs leading-relaxed" style={{ color: '#7491c4' }}>
                   OAuth 2.0 authentication. Your credentials are stored locally and never transmitted to third parties.
                 </p>
               </div>
@@ -250,19 +251,19 @@ export default function AuthScreen() {
           {/* Footer */}
           <div className="mt-8 text-center">
             <div className="flex items-center justify-center gap-2 mb-2">
-              <div className="h-px flex-1" style={{ background: '#D4CFC4' }} />
+              <div className="h-px flex-1" style={{ background: 'rgba(45,90,158,0.3)' }} />
               <div className="flex gap-1">
-                <div className="w-2 h-2 rounded-full" style={{ background: '#3C3B6E' }} />
-                <div className="w-2 h-2 rounded-full" style={{ background: '#FFFFFF', border: '1px solid #D4CFC4' }} />
                 <div className="w-2 h-2 rounded-full" style={{ background: '#B22234' }} />
+                <div className="w-2 h-2 rounded-full bg-white" />
+                <div className="w-2 h-2 rounded-full" style={{ background: '#1a4480' }} />
               </div>
-              <div className="h-px flex-1" style={{ background: '#D4CFC4' }} />
+              <div className="h-px flex-1" style={{ background: 'rgba(45,90,158,0.3)' }} />
             </div>
-            <p className="text-xs" style={{ color: '#9B9B9B' }}>
+            <p className="text-xs" style={{ color: '#2d5a9e' }}>
               Elite Insurance Partners &copy; 2025
             </p>
-            <p className="text-xs mt-1" style={{ color: '#9B9B9B' }}>
-              Internal use only &mdash; not for distribution
+            <p className="text-xs mt-1" style={{ color: '#2d5a9e' }}>
+              Internal use only
             </p>
           </div>
         </motion.div>
