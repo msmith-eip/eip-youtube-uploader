@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import {
   Upload, CheckCircle, AlertCircle, Clock, Video,
   TrendingUp, Play, ExternalLink, RefreshCw, ChevronRight,
-  Tv, Users, Download, Loader2
+  Tv, Download, Loader2
 } from 'lucide-react'
 import { useApp } from '../App'
 import type { UploadHistory } from '../types'
@@ -54,10 +54,8 @@ export default function Dashboard() {
       const videos = result.videos
       setExportStatus(`Building Excel file (${videos.length} videos)...`)
 
-      // Build workbook
       const workbook = XLSX.utils.book_new()
 
-      // ── All Videos Sheet ──────────────────────────────────────────────────────
       const rows = videos.map((v: any) => ({
         'CHANNEL': v.channelName,
         'TITLE': v.title,
@@ -71,35 +69,12 @@ export default function Dashboard() {
       const sheet = XLSX.utils.json_to_sheet(rows, {
         header: ['CHANNEL', 'TITLE', 'YOUTUBE_URL', 'PUBLISHED_DATE', 'VIDEO_ID', 'TAGS', 'DESCRIPTION'],
       })
-
-      // Bold header row
-      const headers = ['CHANNEL', 'TITLE', 'YOUTUBE_URL', 'PUBLISHED_DATE', 'VIDEO_ID', 'TAGS', 'DESCRIPTION']
-      headers.forEach((_, colIdx) => {
-        const cellAddr = XLSX.utils.encode_cell({ r: 0, c: colIdx })
-        if (!sheet[cellAddr]) return
-        sheet[cellAddr].s = {
-          font: { bold: true, sz: 11 },
-          alignment: { horizontal: 'center', vertical: 'center' },
-        }
-      })
-
-      // Freeze header row
-      sheet['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft' }
-
-      // Column widths
       sheet['!cols'] = [
-        { wch: 30 }, // CHANNEL
-        { wch: 60 }, // TITLE
-        { wch: 45 }, // YOUTUBE_URL
-        { wch: 16 }, // PUBLISHED_DATE
-        { wch: 16 }, // VIDEO_ID
-        { wch: 50 }, // TAGS
-        { wch: 80 }, // DESCRIPTION
+        { wch: 30 }, { wch: 60 }, { wch: 45 }, { wch: 16 },
+        { wch: 16 }, { wch: 50 }, { wch: 80 },
       ]
-
       XLSX.utils.book_append_sheet(workbook, sheet, 'All Videos')
 
-      // ── Per-Channel Sheets ─────────────────────────────────────────────────────
       const channelGroups = new Map<string, any[]>()
       for (const v of videos) {
         const key = v.channelName
@@ -121,12 +96,10 @@ export default function Dashboard() {
         channelSheet['!cols'] = [
           { wch: 60 }, { wch: 45 }, { wch: 16 }, { wch: 16 }, { wch: 50 },
         ]
-        // Sanitize sheet name (max 31 chars, no special chars)
         const safeName = channelName.replace(/[\\/*?[\]:]/g, '').substring(0, 31)
         XLSX.utils.book_append_sheet(workbook, channelSheet, safeName)
       }
 
-      // Write to ArrayBuffer and save via Electron dialog
       const arrayBuffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx', cellStyles: true })
       const data = Array.from(new Uint8Array(arrayBuffer))
       const today = new Date().toISOString().split('T')[0]
@@ -158,40 +131,39 @@ export default function Dashboard() {
   }).length
 
   const pendingJobs = uploadJobs.filter(j => j.status === 'pending').length
-  const errorJobs = uploadJobs.filter(j => j.status === 'error').length
 
   const stats = [
     {
       label: 'Uploaded Today',
       value: todayUploaded,
       icon: TrendingUp,
-      color: 'text-accent-green',
-      bg: 'bg-accent-green/10',
-      border: 'border-accent-green/20',
+      iconColor: 'text-green-700',
+      iconBg: 'bg-green-100',
+      border: 'border-green-200',
     },
     {
       label: 'Total Uploads',
       value: totalUploaded,
       icon: CheckCircle,
-      color: 'text-brand-400',
-      bg: 'bg-brand-600/10',
-      border: 'border-brand-600/20',
+      iconColor: 'text-brand-600',
+      iconBg: 'bg-brand-100',
+      border: 'border-brand-200',
     },
     {
       label: 'In Queue',
       value: pendingJobs,
       icon: Clock,
-      color: 'text-accent-yellow',
-      bg: 'bg-accent-yellow/10',
-      border: 'border-accent-yellow/20',
+      iconColor: 'text-gold-600',
+      iconBg: 'bg-gold-100',
+      border: 'border-gold-200',
     },
     {
       label: 'Connected Channels',
       value: channels.length,
       icon: Tv,
-      color: 'text-accent-purple',
-      bg: 'bg-accent-purple/10',
-      border: 'border-accent-purple/20',
+      iconColor: 'text-danger-600',
+      iconBg: 'bg-danger-50',
+      border: 'border-danger-200',
     },
   ]
 
@@ -204,9 +176,9 @@ export default function Dashboard() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
           className={`fixed top-12 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 ${
-            toast.type === 'success' ? 'bg-accent-green/20 border border-accent-green/40 text-accent-green' :
-            toast.type === 'error' ? 'bg-red-500/20 border border-red-500/40 text-red-400' :
-            'bg-brand-600/20 border border-brand-600/40 text-brand-400'
+            toast.type === 'success' ? 'bg-green-50 border border-green-300 text-green-800' :
+            toast.type === 'error' ? 'bg-danger-50 border border-danger-200 text-danger-700' :
+            'bg-brand-50 border border-brand-200 text-brand-700'
           }`}
         >
           {toast.type === 'success' && <CheckCircle size={14} />}
@@ -221,10 +193,10 @@ export default function Dashboard() {
         animate={{ opacity: 1, y: 0 }}
         className="mb-6"
       >
-        <h1 className="text-2xl font-bold text-dark-50">
+        <h1 className="text-2xl font-bold text-surface-ink">
           Welcome back{auth.email ? `, ${auth.email.split('@')[0]}` : ''}
         </h1>
-        <p className="text-dark-400 text-sm mt-1">
+        <p className="text-surface-muted text-sm mt-1">
           Manage your video bulk uploads for Elite Insurance Partners
         </p>
       </motion.div>
@@ -236,7 +208,7 @@ export default function Dashboard() {
         transition={{ delay: 0.1 }}
         className="grid grid-cols-4 gap-4 mb-6"
       >
-        {stats.map(({ label, value, icon: Icon, color, bg, border }, i) => (
+        {stats.map(({ label, value, icon: Icon, iconColor, iconBg, border }, i) => (
           <motion.div
             key={label}
             initial={{ opacity: 0, y: 10 }}
@@ -245,12 +217,12 @@ export default function Dashboard() {
             className={`card border ${border}`}
           >
             <div className="flex items-start justify-between mb-3">
-              <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center`}>
-                <Icon size={18} className={color} />
+              <div className={`w-9 h-9 rounded-lg ${iconBg} flex items-center justify-center`}>
+                <Icon size={18} className={iconColor} />
               </div>
             </div>
-            <div className="text-2xl font-bold text-dark-50 mb-0.5">{value}</div>
-            <div className="text-xs text-dark-400 font-medium uppercase tracking-wider">{label}</div>
+            <div className="text-2xl font-bold text-surface-ink mb-0.5 tabular-nums">{value}</div>
+            <div className="text-xs text-surface-muted font-semibold uppercase tracking-wider">{label}</div>
           </motion.div>
         ))}
       </motion.div>
@@ -265,14 +237,14 @@ export default function Dashboard() {
           className="col-span-1"
         >
           <div className="card h-full">
-            <h3 className="text-sm font-semibold text-dark-100 mb-4 flex items-center gap-2">
-              <Zap size={14} className="text-brand-400" />
+            <h3 className="text-sm font-semibold text-surface-ink mb-4 flex items-center gap-2">
+              <Zap size={14} className="text-brand-600" />
               Quick Actions
             </h3>
             <div className="flex flex-col gap-2">
               <button
                 onClick={() => navigate('/upload')}
-                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white font-medium transition-all duration-200 shadow-glow-sm"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white font-semibold transition-all duration-200 shadow-glow-sm"
               >
                 <Upload size={16} />
                 <span className="text-sm">Start New Upload</span>
@@ -281,38 +253,37 @@ export default function Dashboard() {
 
               <button
                 onClick={() => navigate('/upload')}
-                className="btn-secondary justify-start"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl border border-surface-divider bg-white hover:bg-surface-cream hover:border-brand-300 text-surface-ink font-medium transition-all duration-200"
               >
-                <FileSpreadsheet size={16} />
+                <FileSpreadsheet size={16} className="text-brand-600" />
                 <span className="text-sm">Import Excel File</span>
               </button>
 
               <button
                 onClick={() => navigate('/history')}
-                className="btn-secondary justify-start"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl border border-surface-divider bg-white hover:bg-surface-cream hover:border-brand-300 text-surface-ink font-medium transition-all duration-200"
               >
-                <HistoryIcon size={16} />
+                <HistoryIcon size={16} className="text-brand-600" />
                 <span className="text-sm">View Upload History</span>
               </button>
 
               <button
                 onClick={refreshChannels}
-                className="btn-secondary justify-start"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl border border-surface-divider bg-white hover:bg-surface-cream hover:border-brand-300 text-surface-ink font-medium transition-all duration-200"
               >
-                <RefreshCw size={16} />
+                <RefreshCw size={16} className="text-brand-600" />
                 <span className="text-sm">Refresh Channels</span>
               </button>
 
-              {/* Export Channel Videos button */}
               <button
                 onClick={handleExportChannelVideos}
                 disabled={exportingVideos}
-                className="btn-secondary justify-start disabled:opacity-60 disabled:cursor-not-allowed"
+                className="flex items-center gap-3 px-4 py-3 rounded-xl border border-surface-divider bg-white hover:bg-surface-cream hover:border-brand-300 text-surface-ink font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {exportingVideos ? (
-                  <Loader2 size={16} className="animate-spin text-brand-400" />
+                  <Loader2 size={16} className="animate-spin text-brand-600" />
                 ) : (
-                  <Download size={16} />
+                  <Download size={16} className="text-brand-600" />
                 )}
                 <span className="text-sm">
                   {exportingVideos ? (exportStatus || 'Exporting...') : 'Export Channel Videos'}
@@ -322,16 +293,16 @@ export default function Dashboard() {
 
             {/* Upload Progress */}
             {isUploading && (
-              <div className="mt-4 p-3 rounded-lg bg-brand-600/10 border border-brand-600/20">
+              <div className="mt-4 p-3 rounded-lg bg-brand-50 border border-brand-200">
                 <div className="flex items-center gap-2 mb-2">
                   <motion.div
-                    className="w-2 h-2 rounded-full bg-brand-500"
+                    className="w-2 h-2 rounded-full bg-brand-600"
                     animate={{ opacity: [1, 0.3, 1] }}
                     transition={{ duration: 1.5, repeat: Infinity }}
                   />
-                  <span className="text-xs font-medium text-brand-400">Upload in progress</span>
+                  <span className="text-xs font-semibold text-brand-700">Upload in progress</span>
                 </div>
-                <div className="text-xs text-dark-400 mb-2">
+                <div className="text-xs text-brand-600 mb-2">
                   {uploadJobs.filter(j => j.status === 'complete').length} of {uploadJobs.length} videos uploaded
                 </div>
                 <div className="progress-bar">
@@ -356,24 +327,24 @@ export default function Dashboard() {
         >
           <div className="card h-full">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-dark-100">
+              <h3 className="text-sm font-semibold text-surface-ink">
                 Connected Channels
               </h3>
               <button
                 onClick={refreshChannels}
-                className="p-1 rounded hover:bg-dark-700 transition-colors"
+                className="p-1 rounded hover:bg-surface-cream transition-colors"
               >
-                <RefreshCw size={12} className="text-dark-400" />
+                <RefreshCw size={12} className="text-surface-muted" />
               </button>
             </div>
 
             {channels.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Tv size={32} className="text-dark-600 mb-2" />
-                <p className="text-xs text-dark-500">No channels loaded yet</p>
+                <Tv size={32} className="text-surface-subtle mb-2" />
+                <p className="text-xs text-surface-muted">No channels loaded yet</p>
                 <button
                   onClick={refreshChannels}
-                  className="mt-2 text-xs text-brand-400 hover:text-brand-300"
+                  className="mt-2 text-xs text-brand-600 hover:text-brand-700 font-medium"
                 >
                   Load channels
                 </button>
@@ -383,7 +354,7 @@ export default function Dashboard() {
                 {channels.map(channel => (
                   <div
                     key={channel.id}
-                    className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-dark-700 transition-colors"
+                    className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface-cream transition-colors"
                   >
                     {channel.snippet.thumbnails?.default?.url ? (
                       <img
@@ -392,18 +363,18 @@ export default function Dashboard() {
                         className="w-7 h-7 rounded-full object-cover flex-shrink-0"
                       />
                     ) : (
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-600 to-accent-purple flex items-center justify-center flex-shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-600 to-brand-400 flex items-center justify-center flex-shrink-0">
                         <span className="text-xs font-bold text-white">
                           {channel.snippet.title[0]}
                         </span>
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-dark-100 truncate">
+                      <div className="text-xs font-semibold text-surface-ink truncate">
                         {channel.snippet.title}
                       </div>
                       {channel.snippet.customUrl && (
-                        <div className="text-[10px] text-dark-500 truncate">
+                        <div className="text-[10px] text-surface-muted truncate">
                           {channel.snippet.customUrl}
                         </div>
                       )}
@@ -424,13 +395,13 @@ export default function Dashboard() {
         >
           <div className="card h-full">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-dark-100 flex items-center gap-2">
-                <CheckCircle size={14} className="text-accent-green" />
+              <h3 className="text-sm font-semibold text-surface-ink flex items-center gap-2">
+                <CheckCircle size={14} className="text-green-600" />
                 Recent Uploads
               </h3>
               <button
                 onClick={() => navigate('/history')}
-                className="text-xs text-brand-400 hover:text-brand-300"
+                className="text-xs text-brand-600 hover:text-brand-700 font-medium"
               >
                 View all
               </button>
@@ -438,23 +409,23 @@ export default function Dashboard() {
 
             {history.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Play size={32} className="text-dark-600 mb-2" />
-                <p className="text-xs text-dark-500">No uploads yet</p>
-                <p className="text-[10px] text-dark-600 mt-1">Start uploading to see history</p>
+                <Play size={32} className="text-surface-subtle mb-2" />
+                <p className="text-xs text-surface-muted">No uploads yet</p>
+                <p className="text-[10px] text-surface-subtle mt-1">Start uploading to see history</p>
               </div>
             ) : (
               <div className="flex flex-col gap-1.5 overflow-auto max-h-64 scrollbar-thin">
                 {history.slice(0, 8).map(item => (
                   <div
                     key={item.id}
-                    className="flex items-start gap-2 px-2 py-2 rounded-lg hover:bg-dark-700 transition-colors group"
+                    className="flex items-start gap-2 px-2 py-2 rounded-lg hover:bg-surface-cream transition-colors group"
                   >
-                    <div className="w-6 h-6 rounded bg-accent-green/15 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <CheckCircle size={12} className="text-accent-green" />
+                    <div className="w-6 h-6 rounded bg-green-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <CheckCircle size={12} className="text-green-600" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-dark-100 truncate">{item.title}</div>
-                      <div className="text-[10px] text-dark-500 truncate">{item.channel}</div>
+                      <div className="text-xs font-semibold text-surface-ink truncate">{item.title}</div>
+                      <div className="text-[10px] text-surface-muted truncate">{item.channel}</div>
                     </div>
                     <a
                       href={item.youtubeUrl}
@@ -463,7 +434,7 @@ export default function Dashboard() {
                       className="opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={e => e.stopPropagation()}
                     >
-                      <ExternalLink size={11} className="text-dark-400 hover:text-brand-400" />
+                      <ExternalLink size={11} className="text-surface-muted hover:text-brand-600" />
                     </a>
                   </div>
                 ))}
@@ -478,25 +449,25 @@ export default function Dashboard() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
-        className="mt-4 p-4 rounded-xl bg-gradient-to-r from-dark-800 to-dark-800 border border-dark-700"
+        className="mt-4 p-4 rounded-xl bg-gradient-to-r from-brand-600 to-brand-700 border border-brand-700"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-600 to-accent-purple flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
               <Video size={16} className="text-white" />
             </div>
             <div>
-              <div className="text-sm font-semibold text-dark-100">EIP Brand Channels</div>
-              <div className="text-xs text-dark-500">11 channels configured for bulk upload</div>
+              <div className="text-sm font-semibold text-white">EIP Brand Channels</div>
+              <div className="text-xs text-brand-200">11 channels configured for bulk upload</div>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap justify-end max-w-lg">
             {['@MedicareCompared', '@eliteinsurancepartners', '@applyformedicare', '@HealthCompared', '@LifeCompared', '@TheEliteBrokerage'].map(handle => (
-              <span key={handle} className="text-[10px] px-2 py-0.5 rounded-full bg-dark-700 text-dark-400 border border-dark-600">
+              <span key={handle} className="text-[10px] px-2 py-0.5 rounded-full bg-white/20 text-white border border-white/30">
                 {handle}
               </span>
             ))}
-            <span className="text-[10px] text-dark-500">+5 more</span>
+            <span className="text-[10px] text-brand-200">+5 more</span>
           </div>
         </div>
       </motion.div>

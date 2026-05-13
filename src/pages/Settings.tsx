@@ -42,8 +42,8 @@ export default function Settings() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-6"
         >
-          <h2 className="text-xl font-bold text-dark-50">Settings</h2>
-          <p className="text-sm text-dark-500 mt-1">Configure upload defaults and account settings</p>
+          <h2 className="text-xl font-bold text-surface-ink">Settings</h2>
+          <p className="text-sm text-surface-muted mt-1">Configure upload defaults and account settings</p>
         </motion.div>
 
         {/* Account */}
@@ -54,20 +54,20 @@ export default function Settings() {
           className="card mb-4"
         >
           <div className="flex items-center gap-2 mb-4">
-            <Shield size={16} className="text-brand-400" />
-            <h3 className="text-sm font-semibold text-dark-100">Account</h3>
+            <Shield size={16} className="text-brand-600" />
+            <h3 className="text-sm font-bold text-surface-ink">Account</h3>
           </div>
 
-          <div className="flex items-center justify-between p-3 rounded-xl bg-dark-900 border border-dark-700 mb-3">
+          <div className="flex items-center justify-between p-3 rounded-xl bg-surface-cream border border-surface-divider mb-3">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-accent-purple flex items-center justify-center">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-600 to-brand-400 flex items-center justify-center">
                 <span className="text-sm font-bold text-white">
                   {auth.email ? auth.email[0].toUpperCase() : 'E'}
                 </span>
               </div>
               <div>
-                <div className="text-sm font-medium text-dark-100">{auth.email || 'Connected'}</div>
-                <div className="text-xs text-accent-green flex items-center gap-1">
+                <div className="text-sm font-semibold text-surface-ink">{auth.email || 'Connected'}</div>
+                <div className="text-xs text-green-700 flex items-center gap-1 font-medium">
                   <CheckCircle size={10} />
                   Authenticated with Google
                 </div>
@@ -88,8 +88,8 @@ export default function Settings() {
           className="card mb-4"
         >
           <div className="flex items-center gap-2 mb-4">
-            <Zap size={16} className="text-brand-400" />
-            <h3 className="text-sm font-semibold text-dark-100">Upload Defaults</h3>
+            <Zap size={16} className="text-brand-600" />
+            <h3 className="text-sm font-bold text-surface-ink">Upload Defaults</h3>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -104,7 +104,7 @@ export default function Settings() {
                 <option value="private">Private</option>
                 <option value="public">Public</option>
               </select>
-              <p className="text-[10px] text-dark-600 mt-1">
+              <p className="text-[10px] text-surface-muted mt-1">
                 Applied to new videos without explicit privacy setting
               </p>
             </div>
@@ -136,7 +136,7 @@ export default function Settings() {
                 onChange={e => setLocalSettings(prev => ({ ...prev, delayBetweenUploads: parseInt(e.target.value) }))}
                 className="input"
               />
-              <p className="text-[10px] text-dark-600 mt-1">
+              <p className="text-[10px] text-surface-muted mt-1">
                 Delay between uploads to prevent API throttling (min: 500ms)
               </p>
             </div>
@@ -152,7 +152,7 @@ export default function Settings() {
                 <option value={2}>2 (Parallel)</option>
                 <option value={3}>3 (Parallel)</option>
               </select>
-              <p className="text-[10px] text-dark-600 mt-1">
+              <p className="text-[10px] text-surface-muted mt-1">
                 Higher values may hit API quota limits faster
               </p>
             </div>
@@ -168,8 +168,8 @@ export default function Settings() {
         >
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Youtube size={16} className="text-accent-red" />
-              <h3 className="text-sm font-semibold text-dark-100">Connected Channels</h3>
+              <Youtube size={16} className="text-danger-600" />
+              <h3 className="text-sm font-bold text-surface-ink">Connected Channels</h3>
             </div>
             <button
               onClick={handleRefreshChannels}
@@ -182,9 +182,9 @@ export default function Settings() {
           </div>
 
           {channels.length === 0 ? (
-            <div className="p-4 rounded-xl bg-dark-900 border border-dark-700 text-center">
-              <p className="text-xs text-dark-500 mb-2">No channels loaded</p>
-              <button onClick={handleRefreshChannels} className="text-xs text-brand-400 hover:text-brand-300">
+            <div className="p-4 rounded-xl bg-surface-cream border border-surface-divider text-center">
+              <p className="text-xs text-surface-muted mb-2">No channels loaded</p>
+              <button onClick={handleRefreshChannels} className="text-xs text-brand-600 hover:text-brand-700 font-semibold">
                 Load channels from YouTube
               </button>
             </div>
@@ -193,7 +193,7 @@ export default function Settings() {
               {channels.map(channel => (
                 <div
                   key={channel.id}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg bg-dark-900 border border-dark-700"
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg bg-surface-cream border border-surface-divider hover:border-brand-300 transition-colors"
                 >
                   {channel.snippet.thumbnails?.default?.url ? (
                     <img
@@ -202,27 +202,27 @@ export default function Settings() {
                       className="w-7 h-7 rounded-full object-cover flex-shrink-0"
                     />
                   ) : (
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-600 to-accent-purple flex items-center justify-center flex-shrink-0">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-600 to-brand-400 flex items-center justify-center flex-shrink-0">
                       <span className="text-xs font-bold text-white">
                         {channel.snippet.title[0]}
                       </span>
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium text-dark-100">{channel.snippet.title}</div>
-                    <div className="text-[10px] text-dark-500">{channel.snippet.customUrl || channel.id}</div>
+                    <div className="text-xs font-semibold text-surface-ink">{channel.snippet.title}</div>
+                    <div className="text-[10px] text-surface-muted">{channel.snippet.customUrl || channel.id}</div>
                   </div>
-                  <CheckCircle size={13} className="text-accent-green flex-shrink-0" />
+                  <CheckCircle size={13} className="text-green-600 flex-shrink-0" />
                 </div>
               ))}
             </div>
           )}
 
-          <div className="mt-3 p-3 rounded-lg bg-dark-900 border border-dark-700">
-            <p className="text-xs font-medium text-dark-300 mb-2">EIP Configured Channels</p>
+          <div className="mt-3 p-3 rounded-lg bg-surface-cream border border-surface-divider">
+            <p className="text-xs font-bold text-surface-body mb-2">EIP Configured Channels</p>
             <div className="flex flex-wrap gap-1.5">
               {EIP_CHANNELS.map(c => (
-                <span key={c.handle} className="text-[10px] px-2 py-0.5 rounded-full bg-dark-700 text-dark-400 border border-dark-600">
+                <span key={c.handle} className="text-[10px] px-2 py-0.5 rounded-full bg-white text-surface-body border border-surface-divider font-medium">
                   {c.handle}
                 </span>
               ))}
@@ -238,22 +238,22 @@ export default function Settings() {
           className="card mb-6"
         >
           <div className="flex items-center gap-2 mb-4">
-            <Info size={16} className="text-brand-400" />
-            <h3 className="text-sm font-semibold text-dark-100">API Information</h3>
+            <Info size={16} className="text-brand-600" />
+            <h3 className="text-sm font-bold text-surface-ink">API Information</h3>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             {[
               { label: 'Google Cloud Project', value: 'hidden-ensign-335216' },
-              { label: 'Project Number', value: '786706448902' },
-              { label: 'API', value: 'YouTube Data API v3' },
-              { label: 'Auth Method', value: 'OAuth 2.0 Desktop App' },
-              { label: 'Requested Daily Quota', value: '1,200,000 units' },
-              { label: 'Units per Upload', value: '~1,600 units' },
+              { label: 'Project Number',        value: '786706448902' },
+              { label: 'API',                   value: 'YouTube Data API v3' },
+              { label: 'Auth Method',            value: 'OAuth 2.0 Desktop App' },
+              { label: 'Requested Daily Quota',  value: '1,200,000 units' },
+              { label: 'Units per Upload',       value: '~100 units' },
             ].map(({ label, value }) => (
-              <div key={label} className="p-2.5 rounded-lg bg-dark-900 border border-dark-700">
-                <div className="text-[10px] text-dark-500 uppercase tracking-wider mb-0.5">{label}</div>
-                <div className="text-xs text-dark-200 font-mono">{value}</div>
+              <div key={label} className="p-2.5 rounded-lg bg-surface-cream border border-surface-divider">
+                <div className="text-[10px] text-surface-muted uppercase tracking-wider mb-0.5 font-semibold">{label}</div>
+                <div className="text-xs text-surface-ink font-mono font-semibold">{value}</div>
               </div>
             ))}
           </div>
@@ -268,7 +268,10 @@ export default function Settings() {
         >
           <button
             onClick={handleSave}
-            className={`btn-primary ${saved ? 'bg-accent-green/20 text-accent-green border border-accent-green/30 hover:bg-accent-green/30' : ''}`}
+            className={saved
+              ? 'inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-green-50 border border-green-300 text-green-700 font-semibold text-sm transition-all'
+              : 'btn-primary'
+            }
           >
             {saved ? (
               <>

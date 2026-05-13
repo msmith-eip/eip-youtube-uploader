@@ -59,19 +59,21 @@ module.exports = {
           muted:  '#6B6B6B',
           subtle: '#9B9B9B',
         },
-        // Dark surfaces for depth (kept for compatibility)
+        // Dark text tokens — these are DARK values for use as text on light surfaces
+        // text-dark-50 = near-white (for use on dark backgrounds only)
+        // text-dark-100 through dark-400 = dark readable text on light surfaces
         dark: {
-          50:  '#f6f5f3',
-          100: '#e8e5df',
-          200: '#d4cfc4',
-          300: '#b5ae9f',
-          400: '#8c8476',
-          500: '#6b6358',
-          600: '#524b41',
-          700: '#3d3830',
-          800: '#2a2620',
-          900: '#1c1914',
-          950: '#0f0d0a',
+          50:  '#fafaf9',   // near-white — only use on dark bg
+          100: '#1a1614',   // near-black — primary heading text
+          200: '#2d2520',   // very dark brown — strong body text
+          300: '#3d3530',   // dark brown — body text
+          400: '#524a44',   // medium dark — secondary text
+          500: '#6b5f56',   // medium — muted text (readable on white)
+          600: '#8c7d74',   // medium-light — subtle text
+          700: '#b5a89f',   // light — very subtle, borders
+          800: '#d4cfc4',   // very light — dividers
+          900: '#e8e5df',   // near-white — backgrounds
+          950: '#f6f5f3',   // off-white — lightest bg
         },
         // Status / accent colors mapped to brand palette
         accent: {
