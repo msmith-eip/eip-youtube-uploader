@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Settings as SettingsIcon, Save, Shield, Clock,
-  Youtube, Info, CheckCircle, RefreshCw, LogOut
+  Info, CheckCircle, RefreshCw, LogOut
 } from 'lucide-react'
 import { useApp } from '../App'
 import type { PrivacyStatus, AppSettings } from '../types'
@@ -168,8 +168,8 @@ export default function Settings() {
         >
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Youtube size={16} className="text-danger-600" />
-              <h3 className="text-sm font-bold text-surface-ink">Connected Channels</h3>
+              <CheckCircle size={16} style={{ color: '#4ade80' }} />
+              <h3 className="text-sm font-bold text-white">Connected Channels</h3>
             </div>
             <button
               onClick={handleRefreshChannels}
@@ -218,11 +218,11 @@ export default function Settings() {
             </div>
           )}
 
-          <div className="mt-3 p-3 rounded-lg bg-surface-cream border border-surface-divider">
-            <p className="text-xs font-bold text-surface-body mb-2">EIP Configured Channels</p>
+          <div className="mt-3 p-3 rounded-lg" style={{ background: 'rgba(10,32,80,0.6)', border: '1px solid rgba(45,90,158,0.4)' }}>
+            <p className="text-xs font-bold mb-2" style={{ color: '#c5d0e6' }}>EIP Configured Channels</p>
             <div className="flex flex-wrap gap-1.5">
               {EIP_CHANNELS.map(c => (
-                <span key={c.handle} className="text-[10px] px-2 py-0.5 rounded-full bg-white text-surface-body border border-surface-divider font-medium">
+                <span key={c.handle} className="text-[10px] px-2 py-0.5 rounded-full font-medium" style={{ background: 'rgba(26,68,128,0.4)', color: '#c5d0e6', border: '1px solid rgba(45,90,158,0.5)' }}>
                   {c.handle}
                 </span>
               ))}

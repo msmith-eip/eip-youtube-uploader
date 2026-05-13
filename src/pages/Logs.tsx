@@ -15,42 +15,47 @@ interface LogEntry {
   detail?: string
 }
 
+// Dark-theme level config — all colors readable on navy background
 const LEVEL_CONFIG = {
-  error:   {
-    color:  'text-danger-700',
-    bg:     'bg-danger-50',
-    border: 'border-danger-200',
-    badge:  'bg-danger-100 text-danger-700 border border-danger-200',
-    icon:   AlertCircle,
-    label:  'ERROR',
-    count_bg: 'bg-danger-50 border-danger-200 text-danger-700',
+  error: {
+    color:       '#fb7185',
+    bg:          'rgba(136,19,55,0.18)',
+    border:      'rgba(178,34,52,0.4)',
+    badgeBg:     'rgba(178,34,52,0.25)',
+    badgeText:   '#fb7185',
+    badgeBorder: 'rgba(178,34,52,0.5)',
+    icon:        AlertCircle,
+    label:       'ERROR',
   },
-  warn:    {
-    color:  'text-gold-700',
-    bg:     'bg-gold-50',
-    border: 'border-gold-200',
-    badge:  'bg-gold-100 text-gold-700 border border-gold-200',
-    icon:   AlertTriangle,
-    label:  'WARN',
-    count_bg: 'bg-gold-50 border-gold-200 text-gold-700',
+  warn: {
+    color:       '#efc965',
+    bg:          'rgba(201,169,97,0.1)',
+    border:      'rgba(201,169,97,0.35)',
+    badgeBg:     'rgba(201,169,97,0.2)',
+    badgeText:   '#efc965',
+    badgeBorder: 'rgba(201,169,97,0.4)',
+    icon:        AlertTriangle,
+    label:       'WARN',
   },
-  info:    {
-    color:  'text-brand-700',
-    bg:     'bg-brand-50',
-    border: 'border-brand-200',
-    badge:  'bg-brand-100 text-brand-700 border border-brand-200',
-    icon:   Info,
-    label:  'INFO',
-    count_bg: 'bg-brand-50 border-brand-200 text-brand-700',
+  info: {
+    color:       '#9db1d5',
+    bg:          'rgba(26,68,128,0.2)',
+    border:      'rgba(45,90,158,0.4)',
+    badgeBg:     'rgba(26,68,128,0.3)',
+    badgeText:   '#c5d0e6',
+    badgeBorder: 'rgba(45,90,158,0.5)',
+    icon:        Info,
+    label:       'INFO',
   },
   success: {
-    color:  'text-green-700',
-    bg:     'bg-green-50',
-    border: 'border-green-200',
-    badge:  'bg-green-100 text-green-700 border border-green-200',
-    icon:   CheckCircle2,
-    label:  'OK',
-    count_bg: 'bg-green-50 border-green-200 text-green-700',
+    color:       '#4ade80',
+    bg:          'rgba(34,197,94,0.08)',
+    border:      'rgba(34,197,94,0.3)',
+    badgeBg:     'rgba(34,197,94,0.15)',
+    badgeText:   '#4ade80',
+    badgeBorder: 'rgba(34,197,94,0.35)',
+    icon:        CheckCircle2,
+    label:       'OK',
   },
 }
 
@@ -152,16 +157,19 @@ export default function Logs() {
   }, [isElectron])
 
   return (
-    <div className="h-full flex flex-col p-6 gap-4">
+    <div className="h-full flex flex-col p-6 gap-4" style={{ background: '#061540' }}>
       {/* Header */}
       <div className="flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center shadow-glow-sm">
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center"
+            style={{ background: '#B22234', boxShadow: '0 0 12px rgba(178,34,52,0.4)' }}
+          >
             <Terminal size={18} className="text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-bold text-surface-ink">Activity Logs</h1>
-            <p className="text-xs text-surface-muted">{logs.length} total entries — real-time capture</p>
+            <h1 className="text-lg font-bold text-white">Activity Logs</h1>
+            <p className="text-xs" style={{ color: '#7491c4' }}>{logs.length} total entries — real-time capture</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -170,7 +178,7 @@ export default function Logs() {
             Refresh
           </button>
           <button onClick={handleCopyAll} className="btn-ghost text-xs py-1.5 px-3">
-            {copied ? <Check size={13} className="text-green-600" /> : <Copy size={13} />}
+            {copied ? <Check size={13} style={{ color: '#4ade80' }} /> : <Copy size={13} />}
             {copied ? 'Copied!' : 'Copy All'}
           </button>
           <button onClick={handleExport} className="btn-ghost text-xs py-1.5 px-3">
@@ -179,7 +187,8 @@ export default function Logs() {
           </button>
           <button
             onClick={handleClear}
-            className="btn-ghost text-xs py-1.5 px-3 text-danger-600 hover:bg-danger-50 hover:text-danger-700"
+            className="btn-ghost text-xs py-1.5 px-3"
+            style={{ color: '#fb7185' }}
           >
             <Trash2 size={13} />
             Clear
@@ -198,18 +207,24 @@ export default function Logs() {
             <button
               key={level}
               onClick={() => setFilter(prev => prev === level ? 'all' : level)}
-              className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all ${
-                isActive
-                  ? `${cfg.bg} ${cfg.border} shadow-sm`
-                  : 'bg-white border-surface-divider hover:bg-surface-cream hover:border-surface-border'
-              }`}
+              className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all"
+              style={{
+                background: isActive ? cfg.bg : 'rgba(15,47,97,0.6)',
+                border: `1px solid ${isActive ? cfg.border : 'rgba(45,90,158,0.35)'}`,
+              }}
             >
-              <Icon size={16} className={isActive ? cfg.color : 'text-surface-muted'} />
+              <Icon size={16} style={{ color: isActive ? cfg.color : '#7491c4' }} />
               <div className="text-left">
-                <div className={`text-lg font-bold leading-none tabular-nums ${isActive ? cfg.color : 'text-surface-ink'}`}>
+                <div
+                  className="text-lg font-bold leading-none tabular-nums"
+                  style={{ color: isActive ? cfg.color : '#ffffff' }}
+                >
                   {count}
                 </div>
-                <div className={`text-[10px] uppercase tracking-wider mt-0.5 font-semibold ${isActive ? cfg.color : 'text-surface-muted'}`}>
+                <div
+                  className="text-[10px] uppercase tracking-wider mt-0.5 font-semibold"
+                  style={{ color: isActive ? cfg.color : '#7491c4' }}
+                >
                   {cfg.label}
                 </div>
               </div>
@@ -221,7 +236,7 @@ export default function Logs() {
       {/* Search + Filter Bar */}
       <div className="flex items-center gap-3 flex-shrink-0">
         <div className="flex-1 relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-subtle" />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#4f73b3' }} />
           <input
             type="text"
             placeholder="Search logs..."
@@ -232,20 +247,21 @@ export default function Logs() {
           {search && (
             <button
               onClick={() => setSearch('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-subtle hover:text-surface-muted"
+              className="absolute right-3 top-1/2 -translate-y-1/2"
+              style={{ color: '#4f73b3' }}
             >
               <X size={13} />
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2 text-xs text-surface-muted">
+        <div className="flex items-center gap-2 text-xs" style={{ color: '#7491c4' }}>
           <span className="font-medium">{filtered.length} shown</span>
           <label className="flex items-center gap-1.5 cursor-pointer">
             <input
               type="checkbox"
               checked={autoScroll}
               onChange={e => setAutoScroll(e.target.checked)}
-              className="w-3 h-3 accent-brand-600"
+              className="w-3 h-3 accent-red-600"
             />
             Auto-scroll
           </label>
@@ -255,19 +271,23 @@ export default function Logs() {
       {/* Log List */}
       <div
         ref={listRef}
-        className="flex-1 overflow-y-auto rounded-xl border border-surface-divider bg-white font-mono text-xs shadow-sm"
+        className="flex-1 overflow-y-auto rounded-xl font-mono text-xs"
+        style={{
+          background: '#0a2050',
+          border: '1px solid rgba(45,90,158,0.4)',
+        }}
       >
         {loading ? (
-          <div className="flex items-center justify-center h-32 text-surface-muted">
+          <div className="flex items-center justify-center h-32" style={{ color: '#7491c4' }}>
             <RefreshCw size={16} className="animate-spin mr-2" /> Loading logs...
           </div>
         ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-32 text-surface-muted gap-2">
+          <div className="flex flex-col items-center justify-center h-32 gap-2" style={{ color: '#7491c4' }}>
             <Terminal size={24} className="opacity-30" />
             <span>{search || filter !== 'all' ? 'No logs match your filter' : 'No logs yet — activity will appear here'}</span>
           </div>
         ) : (
-          <div className="divide-y divide-surface-divider">
+          <div>
             <AnimatePresence initial={false}>
               {filtered.map((log) => {
                 const cfg = LEVEL_CONFIG[log.level]
@@ -280,37 +300,55 @@ export default function Logs() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.15 }}
                     className={`group ${log.detail ? 'cursor-pointer' : ''}`}
+                    style={{ borderBottom: '1px solid rgba(26,58,110,0.6)' }}
                     onClick={() => log.detail && setExpandedId(isExpanded ? null : log.id)}
                   >
-                    <div className={`flex items-start gap-3 px-4 py-2.5 hover:bg-surface-cream transition-colors ${isExpanded ? 'bg-surface-cream' : ''}`}>
+                    <div
+                      className="flex items-start gap-3 px-4 py-2.5 transition-colors"
+                      style={{ background: isExpanded ? 'rgba(26,68,128,0.2)' : 'transparent' }}
+                      onMouseEnter={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = 'rgba(26,68,128,0.15)' }}
+                      onMouseLeave={e => { if (!isExpanded) (e.currentTarget as HTMLElement).style.background = 'transparent' }}
+                    >
                       {/* Level icon */}
-                      <Icon size={13} className={`${cfg.color} flex-shrink-0 mt-0.5`} />
+                      <Icon size={13} className="flex-shrink-0 mt-0.5" style={{ color: cfg.color }} />
                       {/* Time */}
-                      <span className="text-surface-muted flex-shrink-0 w-20">{formatTime(log.timestamp)}</span>
+                      <span className="flex-shrink-0 w-20" style={{ color: '#7491c4' }}>{formatTime(log.timestamp)}</span>
                       {/* Category badge */}
-                      <span className={`flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${cfg.badge}`}>
+                      <span
+                        className="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"
+                        style={{
+                          background: cfg.badgeBg,
+                          color: cfg.badgeText,
+                          border: `1px solid ${cfg.badgeBorder}`,
+                        }}
+                      >
                         {log.category}
                       </span>
                       {/* Message */}
-                      <span className={`flex-1 ${
-                        log.level === 'error' ? 'text-danger-700 font-medium' :
-                        log.level === 'warn'  ? 'text-gold-700' :
-                        log.level === 'success' ? 'text-green-700' :
-                        'text-surface-body'
-                      } break-all`}>
+                      <span
+                        className="flex-1 break-all"
+                        style={{
+                          color: log.level === 'error'   ? '#fda4af' :
+                                 log.level === 'warn'    ? '#efc965' :
+                                 log.level === 'success' ? '#4ade80' :
+                                 '#c5d0e6',
+                          fontWeight: log.level === 'error' ? 500 : 400,
+                        }}
+                      >
                         {log.message}
                       </span>
                       {/* Actions */}
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                         <button
                           onClick={e => { e.stopPropagation(); handleCopyEntry(log) }}
-                          className="p-1 rounded hover:bg-surface-divider text-surface-muted hover:text-surface-ink"
+                          className="p-1 rounded transition-colors"
+                          style={{ color: '#7491c4' }}
                           title="Copy this entry"
                         >
                           <Copy size={11} />
                         </button>
                         {log.detail && (
-                          <button className="p-1 rounded hover:bg-surface-divider text-surface-muted hover:text-surface-ink">
+                          <button className="p-1 rounded transition-colors" style={{ color: '#7491c4' }}>
                             {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
                           </button>
                         )}
@@ -324,7 +362,14 @@ export default function Logs() {
                         exit={{ opacity: 0, height: 0 }}
                         className="px-4 pb-3 pt-0"
                       >
-                        <pre className="bg-surface-cream border border-surface-divider rounded-lg p-3 text-[11px] text-danger-700 overflow-x-auto whitespace-pre-wrap break-all leading-relaxed">
+                        <pre
+                          className="rounded-lg p-3 text-[11px] overflow-x-auto whitespace-pre-wrap break-all leading-relaxed"
+                          style={{
+                            background: 'rgba(136,19,55,0.15)',
+                            border: '1px solid rgba(178,34,52,0.35)',
+                            color: '#fda4af',
+                          }}
+                        >
                           {log.detail}
                         </pre>
                       </motion.div>
@@ -338,11 +383,11 @@ export default function Logs() {
       </div>
 
       {/* Footer tip */}
-      <div className="flex-shrink-0 text-[11px] text-surface-muted flex items-center gap-2">
+      <div className="flex-shrink-0 text-[11px] flex items-center gap-2" style={{ color: '#7491c4' }}>
         <Info size={11} />
         <span>
-          When reporting issues, click <strong className="text-surface-body">Copy All</strong> to copy logs to clipboard.
-          Use <strong className="text-surface-body">Export</strong> to save logs as a text file.
+          When reporting issues, click <strong style={{ color: '#c5d0e6' }}>Copy All</strong> to copy logs to clipboard.
+          Use <strong style={{ color: '#c5d0e6' }}>Export</strong> to save logs as a text file.
         </span>
       </div>
     </div>

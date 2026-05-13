@@ -89,22 +89,27 @@ export default function History() {
 
   const tabClass = (tab: FilterTab) =>
     `px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none ${
-      filterTab === tab
-        ? 'bg-brand-600 text-white shadow-sm'
-        : 'text-surface-muted hover:text-surface-ink hover:bg-surface-cream'
+      filterTab === tab ? 'text-white' : 'text-navy-300 hover:text-white'
     }`
+  const tabStyle = (tab: FilterTab): React.CSSProperties =>
+    filterTab === tab
+      ? { background: 'rgba(178,34,52,0.35)', border: '1px solid rgba(178,34,52,0.5)' }
+      : { background: 'transparent', border: '1px solid transparent' }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" style={{ background: '#061540' }}>
       {/* Header */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-surface-divider bg-white">
+      <div
+        className="flex-shrink-0 px-6 py-4"
+        style={{ borderBottom: '1px solid rgba(45,90,158,0.4)', background: '#030d2b' }}
+      >
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div>
-            <h2 className="text-lg font-bold text-surface-ink">Upload History</h2>
+            <h2 className="text-lg font-bold text-white">Upload History</h2>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xs text-green-700 font-semibold">{successCount} uploaded</span>
+              <span className="text-xs font-semibold" style={{ color: '#4ade80' }}>{successCount} uploaded</span>
               {failedCount > 0 && (
-                <span className="text-xs text-danger-600 font-semibold">• {failedCount} failed</span>
+                <span className="text-xs font-semibold" style={{ color: '#fb7185' }}>• {failedCount} failed</span>
               )}
             </div>
           </div>
@@ -124,19 +129,22 @@ export default function History() {
 
         {/* Filter tabs + search */}
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1 bg-surface-cream rounded-lg p-1 border border-surface-divider">
-            <button className={tabClass('all')} onClick={() => setFilterTab('all')}>
+          <div
+            className="flex items-center gap-1 rounded-lg p-1"
+            style={{ background: 'rgba(10,32,80,0.8)', border: '1px solid rgba(45,90,158,0.4)' }}
+          >
+            <button className={tabClass('all')} style={tabStyle('all')} onClick={() => setFilterTab('all')}>
               All ({history.length})
             </button>
-            <button className={tabClass('success')} onClick={() => setFilterTab('success')}>
+            <button className={tabClass('success')} style={tabStyle('success')} onClick={() => setFilterTab('success')}>
               ✓ Uploaded ({successCount})
             </button>
-            <button className={tabClass('failed')} onClick={() => setFilterTab('failed')}>
+            <button className={tabClass('failed')} style={tabStyle('failed')} onClick={() => setFilterTab('failed')}>
               ✗ Failed ({failedCount})
             </button>
           </div>
           <div className="relative">
-            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-surface-subtle" />
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: '#4f73b3' }} />
             <input
               type="text"
               placeholder="Search..."
@@ -166,7 +174,8 @@ export default function History() {
               {[0, 1, 2].map(i => (
                 <motion.div
                   key={i}
-                  className="w-2 h-2 rounded-full bg-brand-600"
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: '#B22234' }}
                   animate={{ opacity: [0.3, 1, 0.3] }}
                   transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.2 }}
                 />
@@ -175,14 +184,14 @@ export default function History() {
           </div>
         ) : history.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <Youtube size={40} className="text-surface-subtle mb-4" />
-            <h3 className="text-base font-semibold text-surface-ink mb-2">No upload history</h3>
-            <p className="text-sm text-surface-muted">Uploaded and failed videos will appear here</p>
+            <Youtube size={40} className="mb-4" style={{ color: '#4f73b3' }} />
+            <h3 className="text-base font-semibold text-white mb-2">No upload history</h3>
+            <p className="text-sm" style={{ color: '#7491c4' }}>Uploaded and failed videos will appear here</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <Search size={32} className="text-surface-subtle mb-3" />
-            <p className="text-sm text-surface-muted">No results match your filters</p>
+            <Search size={32} className="mb-3" style={{ color: '#4f73b3' }} />
+            <p className="text-sm" style={{ color: '#7491c4' }}>No results match your filters</p>
           </div>
         ) : (
           <div className="flex flex-col gap-6">
@@ -194,14 +203,14 @@ export default function History() {
               >
                 {/* Date separator */}
                 <div className="flex items-center gap-2 mb-3">
-                  <Calendar size={13} className="text-surface-muted" />
-                  <span className="text-xs font-bold text-surface-body uppercase tracking-wider">{date}</span>
-                  <span className="text-xs text-surface-muted">
+                  <Calendar size={13} style={{ color: '#7491c4' }} />
+                  <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#c5d0e6' }}>{date}</span>
+                  <span className="text-xs" style={{ color: '#7491c4' }}>
                     ({items.filter(i => !i.status || i.status === 'success').length} uploaded
                     {items.filter(i => i.status === 'failed').length > 0 &&
                       `, ${items.filter(i => i.status === 'failed').length} failed`})
                   </span>
-                  <div className="flex-1 h-px bg-surface-divider" />
+                  <div className="flex-1 h-px" style={{ background: 'rgba(45,90,158,0.4)' }} />
                 </div>
 
                 <div className="flex flex-col gap-1.5">
@@ -212,59 +221,69 @@ export default function History() {
                         key={item.id}
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}
-                        className={`flex items-start gap-3 px-3 py-2.5 rounded-xl border transition-all group ${
-                          isFailed
-                            ? 'bg-danger-50 border-danger-200 hover:border-danger-300'
-                            : 'bg-white border-surface-divider hover:border-brand-300 hover:bg-surface-cream'
-                        }`}
+                        className="flex items-start gap-3 px-3 py-2.5 rounded-xl transition-all group"
+                        style={isFailed ? {
+                          background: 'rgba(136,19,55,0.18)',
+                          border: '1px solid rgba(178,34,52,0.4)',
+                        } : {
+                          background: 'rgba(15,47,97,0.7)',
+                          border: '1px solid rgba(45,90,158,0.4)',
+                        }}
                       >
                         {/* Status icon */}
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${
-                          isFailed ? 'bg-danger-100' : 'bg-green-100'
-                        }`}>
+                        <div
+                          className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                          style={isFailed
+                            ? { background: 'rgba(178,34,52,0.25)' }
+                            : { background: 'rgba(34,197,94,0.15)' }
+                          }
+                        >
                           {isFailed
-                            ? <XCircle size={14} className="text-danger-600" />
-                            : <CheckCircle size={14} className="text-green-600" />
+                            ? <XCircle size={14} style={{ color: '#fb7185' }} />
+                            : <CheckCircle size={14} style={{ color: '#4ade80' }} />
                           }
                         </div>
 
                         {/* Info */}
                         <div className="flex-1 min-w-0">
-                          <div className="text-xs font-semibold text-surface-ink break-words leading-relaxed">
+                          <div className="text-xs font-semibold text-white break-words leading-relaxed">
                             {item.title}
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span className="text-[10px] text-surface-muted font-medium">{item.channel}</span>
-                            <span className="text-[10px] text-surface-subtle">•</span>
-                            <span className={`text-[10px] font-semibold ${
-                              item.privacy === 'unlisted' ? 'text-gold-600' :
-                              item.privacy === 'private' ? 'text-danger-600' :
-                              'text-green-700'
-                            }`}>{item.privacy}</span>
+                            <span className="text-[10px] font-medium" style={{ color: '#9db1d5' }}>{item.channel}</span>
+                            <span className="text-[10px]" style={{ color: '#4f73b3' }}>•</span>
+                            <span className="text-[10px] font-semibold" style={{
+                              color: item.privacy === 'unlisted' ? '#C9A961' :
+                                     item.privacy === 'private'  ? '#fb7185' :
+                                     '#4ade80'
+                            }}>{item.privacy}</span>
                             {isFailed && (
                               <>
-                                <span className="text-[10px] text-surface-subtle">•</span>
-                                <span className="text-[10px] text-danger-600 font-bold">Failed</span>
+                                <span className="text-[10px]" style={{ color: '#4f73b3' }}>•</span>
+                                <span className="text-[10px] font-bold" style={{ color: '#fb7185' }}>Failed</span>
                               </>
                             )}
                           </div>
 
                           {/* Error message */}
                           {isFailed && item.error && (
-                            <div className="flex items-start gap-1 mt-1.5 bg-danger-100 rounded-lg px-2 py-1.5 border border-danger-200">
-                              <AlertCircle size={10} className="text-danger-600 flex-shrink-0 mt-0.5" />
-                              <p className="text-[10px] text-danger-700 break-words leading-relaxed">{item.error}</p>
+                            <div
+                              className="flex items-start gap-1 mt-1.5 rounded-lg px-2 py-1.5"
+                              style={{ background: 'rgba(178,34,52,0.15)', border: '1px solid rgba(178,34,52,0.35)' }}
+                            >
+                              <AlertCircle size={10} className="flex-shrink-0 mt-0.5" style={{ color: '#fb7185' }} />
+                              <p className="text-[10px] break-words leading-relaxed" style={{ color: '#fda4af' }}>{item.error}</p>
                             </div>
                           )}
 
                           {/* File path for failed */}
                           {isFailed && item.filePath && (
-                            <p className="text-[10px] text-surface-muted mt-1 break-all leading-relaxed">{item.filePath}</p>
+                            <p className="text-[10px] mt-1 break-all leading-relaxed" style={{ color: '#7491c4' }}>{item.filePath}</p>
                           )}
                         </div>
 
                         {/* Time */}
-                        <div className="text-[10px] text-surface-muted font-medium flex-shrink-0 mt-0.5">
+                        <div className="text-[10px] font-medium flex-shrink-0 mt-0.5" style={{ color: '#7491c4' }}>
                           {new Date(item.uploadedAt).toLocaleTimeString('en-US', {
                             hour: '2-digit', minute: '2-digit'
                           })}
@@ -275,7 +294,12 @@ export default function History() {
                           {isFailed ? (
                             <button
                               onClick={() => handleBrowse(item)}
-                              className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-surface-divider hover:bg-surface-cream hover:border-brand-300 text-surface-body hover:text-surface-ink transition-colors"
+                              className="flex items-center gap-1 px-2 py-1 rounded-lg transition-colors"
+                              style={{
+                                background: 'rgba(26,68,128,0.35)',
+                                border: '1px solid rgba(45,90,158,0.45)',
+                                color: '#c5d0e6',
+                              }}
                               title="Locate video file"
                             >
                               <FolderOpen size={11} />
@@ -287,7 +311,12 @@ export default function History() {
                                 href={item.youtubeUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-surface-divider hover:bg-surface-cream hover:border-brand-300 text-surface-body hover:text-surface-ink"
+                                className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-2 py-1 rounded-lg"
+                                style={{
+                                  background: 'rgba(26,68,128,0.35)',
+                                  border: '1px solid rgba(45,90,158,0.45)',
+                                  color: '#c5d0e6',
+                                }}
                               >
                                 <ExternalLink size={11} />
                                 <span className="text-[10px] font-medium">View</span>
