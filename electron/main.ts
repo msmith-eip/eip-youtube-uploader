@@ -122,11 +122,12 @@ function getQuotaResetDatePT(): string {
 function addQuota(units: number, operation: string): void {
   const today = getQuotaResetDatePT()
   const quota = store.get('quota') as { usedUnits: number; resetDate: string }
-  // Reset if it's a new day
-  if (quota.resetDate !== today) {
+  // Reset if it's a new day (or if resetDate is missing/invalid)
+  if (!quota.resetDate || quota.resetDate !== today) {
+    // Reset to 0 first, then add the current units
     store.set('quota', { usedUnits: units, resetDate: today })
   } else {
-    store.set('quota.usedUnits', quota.usedUnits + units)
+    store.set('quota.usedUnits', (quota.usedUnits || 0) + units)
   }
   const updated = store.get('quota') as { usedUnits: number; resetDate: string }
   const pct = Math.min(100, Math.round((updated.usedUnits / QUOTA_DAILY_LIMIT) * 100))
@@ -873,23 +874,12 @@ async function checkPrivacyForcedPrivate(
   intendedPrivacy: string,
   jobIndex: number
 ): Promise<void> {
-  try {
-    const res = await youtube.videos.list({ part: ['status'], id: [videoId] })
-    addQuota(QUOTA_COSTS.VIDEOS_LIST, 'videos.list (privacy check)')
-    const actual = res?.data?.items?.[0]?.status?.privacyStatus
-    if (actual && actual === 'private' && intendedPrivacy !== 'private') {
-      addLog('warn', 'Upload',
-        `Video ${videoId} was forced to private by YouTube (unverified API project)`,
-        `Intended: ${intendedPrivacy} | Actual: private`)
-      mainWindow?.webContents.send('upload:privacy-warning', {
-        index: jobIndex,
-        videoId,
-        intendedPrivacy,
-        actualPrivacy: actual,
-      })
-    }
-  } catch (err: any) {
-    addLog('warn', 'Upload', `Could not verify privacy status for ${videoId}: ${err.message}`)
+  // NOTE: Privacy check API call removed to save 1 quota unit per upload.
+  // YouTube may force videos to 'private' on unverified API projects.
+  // If the intended privacy is not 'private', log an informational warning.
+  if (intendedPrivacy !== 'private') {
+    addLog('info', 'Upload',
+      `Video ${videoId} uploaded as '${intendedPrivacy}'. Note: YouTube may force to private on unverified API projects.`)
   }
 }
 
