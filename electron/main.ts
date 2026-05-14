@@ -146,6 +146,27 @@ function addQuota(units: number, operation: string): void {
   mainWindow?.webContents.send('quota:update', { usedUnits: updated.usedUnits, resetDate: updated.resetDate, dailyLimit: QUOTA_DAILY_LIMIT })
 }
 
+// ─── File Path Resolver ─────────────────────────────────────────────────────
+// When a file is not found at the given path, automatically try inserting "_1"
+// before the extension (e.g. video.mp4 → video_1.mp4). Returns the resolved
+// path that actually exists, or throws a clear error if neither path exists.
+function resolveFilePath(filePath: string): string {
+  if (fs.existsSync(filePath)) return filePath
+  // Build the _1 variant: insert "_1" before the last extension
+  const ext = path.extname(filePath)           // e.g. ".mp4"
+  const base = filePath.slice(0, filePath.length - ext.length)  // path without ext
+  const fallback = `${base}_1${ext}`
+  if (fs.existsSync(fallback)) {
+    addLog('info', 'Upload', `File not found at original path — using _1 variant: ${path.basename(fallback)}`)
+    return fallback
+  }
+  // Neither path exists — throw a descriptive error
+  const hint = filePath.includes('OneDrive') && !filePath.includes('OneDrive - ')
+    ? `File not found. The path may be missing "OneDrive - " — check that the FILE_PATH in your spreadsheet matches the full OneDrive path on this machine.`
+    : `File not found. Checked:\n  ${filePath}\n  ${fallback}`
+  throw new Error(hint)
+}
+
 // ─── Upload Limit Helper ─────────────────────────────────────────────────────
 // Call this whenever YouTube returns the channel upload count limit error.
 // Signals the renderer to stop the queue and show a clear message.
@@ -526,15 +547,10 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
           mainWindow?.webContents.send('upload:job-syncing', { index: i, jobId: job.id, message: msg })
         })
       }
-      // Check file exists before attempting to stream it — gives a clear error instead of ENOENT
-      if (!fs.existsSync(normalizedPath)) {
-        const hint = normalizedPath.includes('OneDrive') && !normalizedPath.includes('OneDrive - ')
-          ? `File not found. The path may be missing "OneDrive - " — check that the FILE_PATH in your spreadsheet matches the full OneDrive path on this machine.`
-          : `File not found. Check that the file exists at: ${normalizedPath}`
-        throw new Error(hint)
-      }
-      const fileStream = fs.createReadStream(normalizedPath)
-      const fileStat = fs.statSync(normalizedPath)
+      // Resolve file path — automatically tries _1 variant if original not found
+      const resolvedPath = resolveFilePath(normalizedPath)
+      const fileStream = fs.createReadStream(resolvedPath)
+      const fileStat = fs.statSync(resolvedPath)
 
       const response = await youtube.videos.insert(
         {
@@ -681,8 +697,9 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
         mainWindow?.webContents.send('upload:job-syncing', { index: retryIndex, message: msg })
       })
     }
-    const fileStream = fs.createReadStream(normalizedPath)
-    const fileStat = fs.statSync(normalizedPath)
+    const resolvedPath = resolveFilePath(normalizedPath)
+    const fileStream = fs.createReadStream(resolvedPath)
+    const fileStat = fs.statSync(resolvedPath)
     const response = await youtube.videos.insert(
       {
         part: ['snippet', 'status'],
@@ -769,8 +786,9 @@ ipcMain.handle('upload:force-upload-job', async (event, job: any) => {
         mainWindow?.webContents.send('upload:job-syncing', { index: forceIndex, message: msg })
       })
     }
-    const fileStream = fs.createReadStream(normalizedPath)
-    const fileStat = fs.statSync(normalizedPath)
+    const resolvedPath = resolveFilePath(normalizedPath)
+    const fileStream = fs.createReadStream(resolvedPath)
+    const fileStat = fs.statSync(resolvedPath)
     const response = await youtube.videos.insert(
       {
         part: ['snippet', 'status'],
