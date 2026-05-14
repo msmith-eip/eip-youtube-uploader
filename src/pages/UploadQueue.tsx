@@ -170,6 +170,11 @@ export default function UploadQueue() {
       setDuplicateDialog(data)
     })
 
+    ;(window.electronAPI.upload as any).onLimitExceeded?.(() => {
+      setIsUploading(false)
+      showToast('error', 'YouTube channel upload limit reached — uploads stopped. The limit resets at midnight Pacific Time.')
+    })
+
     window.electronAPI.upload.onAllComplete(async () => {
       setIsUploading(false)
       // Write back upload results to the original Excel file

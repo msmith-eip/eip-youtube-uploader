@@ -146,6 +146,21 @@ function addQuota(units: number, operation: string): void {
   mainWindow?.webContents.send('quota:update', { usedUnits: updated.usedUnits, resetDate: updated.resetDate, dailyLimit: QUOTA_DAILY_LIMIT })
 }
 
+// ─── Upload Limit Helper ─────────────────────────────────────────────────────
+// Call this whenever YouTube returns the channel upload count limit error.
+// Signals the renderer to stop the queue and show a clear message.
+function isUploadLimitError(msg: string): boolean {
+  return msg.toLowerCase().includes('exceeded the number of videos') ||
+         msg.toLowerCase().includes('uploadlimitexceeded') ||
+         msg.toLowerCase().includes('user upload limit')
+}
+
+function markUploadLimitHit(): void {
+  cancelUpload = true
+  addLog('error', 'Upload', 'Channel upload limit reached — YouTube has blocked further uploads for today. The limit resets at midnight Pacific Time. Remaining jobs have been cancelled.')
+  mainWindow?.webContents.send('upload:limit-exceeded')
+}
+
 // ─── OAuth2 Setup ─────────────────────────────────────────────────────────────
 const REDIRECT_URI = 'http://localhost:8765'
 
@@ -608,6 +623,8 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
         addLog('error', 'Upload', `Failed: ${job.fileName || job.filePath}`, errMsg)
         // Snap quota to 100% if this was a quota exceeded error
         if (errMsg.toLowerCase().includes('quota') || (err2.code === 403)) markQuotaExhausted()
+        // Stop the queue if YouTube's channel upload limit was hit
+        if (isUploadLimitError(errMsg)) markUploadLimitHit()
         mainWindow?.webContents.send('upload:job-error', {
           index: i,
           jobId: job.id,
@@ -725,6 +742,7 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
   } catch (err: any) {
     const retryErrMsg = err.message || 'Retry failed'
     if (retryErrMsg.toLowerCase().includes('quota') || (err.code === 403)) markQuotaExhausted()
+    if (isUploadLimitError(retryErrMsg)) markUploadLimitHit()
     addLog('error', 'Upload', `Retry failed: ${job.fileName || job.filePath}`, retryErrMsg)
     mainWindow?.webContents.send('upload:job-error', {
       index: job._queueIndex,
@@ -812,6 +830,7 @@ ipcMain.handle('upload:force-upload-job', async (event, job: any) => {
   } catch (err: any) {
     const forceErrMsg = err.message || 'Force upload failed'
     if (forceErrMsg.toLowerCase().includes('quota') || (err.code === 403)) markQuotaExhausted()
+    if (isUploadLimitError(forceErrMsg)) markUploadLimitHit()
     addLog('error', 'Upload', `Force upload failed: ${job.fileName || job.filePath}`, forceErrMsg)
     mainWindow?.webContents.send('upload:job-error', {
       index: forceIndex,
