@@ -152,18 +152,23 @@ function addQuota(units: number, operation: string): void {
 // path that actually exists, or throws a clear error if neither path exists.
 function resolveFilePath(filePath: string): string {
   if (fs.existsSync(filePath)) return filePath
-  // Build the _1 variant: insert "_1" before the last extension
+  // Try _1 and _2 variants: insert suffix before the last extension
   const ext = path.extname(filePath)           // e.g. ".mp4"
   const base = filePath.slice(0, filePath.length - ext.length)  // path without ext
-  const fallback = `${base}_1${ext}`
-  if (fs.existsSync(fallback)) {
-    addLog('info', 'Upload', `File not found at original path — using _1 variant: ${path.basename(fallback)}`)
-    return fallback
+  const fallback1 = `${base}_1${ext}`
+  if (fs.existsSync(fallback1)) {
+    addLog('info', 'Upload', `File not found at original path — using _1 variant: ${path.basename(fallback1)}`)
+    return fallback1
   }
-  // Neither path exists — throw a descriptive error
+  const fallback2 = `${base}_2${ext}`
+  if (fs.existsSync(fallback2)) {
+    addLog('info', 'Upload', `File not found at original path — using _2 variant: ${path.basename(fallback2)}`)
+    return fallback2
+  }
+  // None of the paths exist — throw a descriptive error
   const hint = filePath.includes('OneDrive') && !filePath.includes('OneDrive - ')
     ? `File not found. The path may be missing "OneDrive - " — check that the FILE_PATH in your spreadsheet matches the full OneDrive path on this machine.`
-    : `File not found. Checked:\n  ${filePath}\n  ${fallback}`
+    : `File not found. Checked:\n  ${filePath}\n  ${fallback1}\n  ${fallback2}`
   throw new Error(hint)
 }
 
