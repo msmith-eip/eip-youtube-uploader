@@ -109,6 +109,38 @@ export default function App() {
     return () => { if (typeof (unsub as any) === 'function') (unsub as any)() }
   }, [])
 
+  // Queue state sync — on app init (and after auth), pull the live queue snapshot
+  // from the main process so that navigating away and back restores correct job statuses.
+  useEffect(() => {
+    if (!window.electronAPI || !auth.authenticated) return
+    window.electronAPI.upload.getQueueState().then((snapshot: any) => {
+      if (!snapshot || !snapshot.isUploading) return
+      // An upload is in progress — rebuild uploadJobs from the snapshot
+      const { jobs, liveStates } = snapshot
+      if (!jobs || jobs.length === 0) return
+      const restoredJobs: UploadJob[] = jobs.map((job: any, idx: number) => {
+        const live = liveStates?.[idx]
+        if (live) {
+          return {
+            ...job,
+            status: live.status,
+            progress: live.progress ?? job.progress ?? 0,
+            videoId: live.videoId ?? job.videoId,
+            youtubeUrl: live.youtubeUrl ?? job.youtubeUrl,
+            error: live.error ?? job.error,
+            canRetry: live.canRetry ?? job.canRetry,
+            skipReason: live.skipReason ?? job.skipReason,
+            existingUrl: live.existingUrl ?? job.existingUrl,
+          }
+        }
+        // Job hasn't been touched yet — keep as pending
+        return { ...job, status: job.status === 'complete' || job.status === 'error' || job.status === 'skipped' ? job.status : 'pending' }
+      })
+      setUploadJobs(restoredJobs)
+      setIsUploading(true)
+    }).catch(() => {})
+  }, [auth.authenticated])
+
   // Safety net: if all jobs are done (complete or error) but isUploading is still true, clear it
   useEffect(() => {
     if (!isUploading || uploadJobs.length === 0) return

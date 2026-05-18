@@ -265,6 +265,36 @@ export default function UploadQueue() {
     }
   }, [setUploadJobs, setIsUploading])
 
+  // Sync queue state on page mount — if an upload is running while the user navigated
+  // away, restore the live job statuses so the UI shows the correct state on return.
+  useEffect(() => {
+    if (!window.electronAPI) return
+    ;(window.electronAPI.upload as any).getQueueState?.().then((snapshot: any) => {
+      if (!snapshot?.isUploading) return
+      const { jobs, liveStates } = snapshot
+      if (!jobs || jobs.length === 0) return
+      setUploadJobs((prev: UploadJob[]) => {
+        // Only sync if the current jobs array matches the snapshot (same length)
+        if (prev.length !== jobs.length) return prev
+        return prev.map((job: UploadJob, idx: number) => {
+          const live = liveStates?.[idx]
+          if (!live) return job
+          return {
+            ...job,
+            status: live.status,
+            progress: live.progress ?? job.progress ?? 0,
+            videoId: live.videoId ?? job.videoId,
+            youtubeUrl: live.youtubeUrl ?? job.youtubeUrl,
+            error: live.error ?? job.error,
+            canRetry: live.canRetry ?? job.canRetry,
+            skipReason: live.skipReason ?? job.skipReason,
+            existingUrl: live.existingUrl ?? job.existingUrl,
+          }
+        })
+      })
+    }).catch(() => {})
+  }, [setUploadJobs])
+
   // ── File Operations ──────────────────────────────────────────────────────────
   const handleAddVideos = async () => {
     if (!window.electronAPI) return

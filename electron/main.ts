@@ -204,6 +204,18 @@ let isUploading = false
 let currentUploadIndex = 0
 let cancelUpload = false
 let mainWindow: BrowserWindow | null = null
+// Live per-job state snapshot — keyed by job index. Persists across renderer
+// navigation so the renderer can re-sync when the Upload Queue page remounts.
+let liveJobStates: Record<number, {
+  status: 'uploading' | 'retrying' | 'syncing' | 'complete' | 'error' | 'skipped' | 'cancelled'
+  progress?: number
+  videoId?: string
+  youtubeUrl?: string
+  error?: string
+  canRetry?: boolean
+  skipReason?: string
+  existingUrl?: string
+}> = {}
 
 // ─── Window Creation ──────────────────────────────────────────────────────────
 function createWindow() {
@@ -473,6 +485,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
   isUploading = true
   cancelUpload = false
   currentUploadIndex = 0
+  liveJobStates = {}  // reset snapshot for new queue run
 
   const settings = store.get('settings') as any
   const delay = settings?.delayBetweenUploads || 2000
@@ -519,6 +532,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
         })
         if (resolution === 'skip') {
           addLog('info', 'Upload', `User skipped duplicate: ${jobFileName}`)
+          liveJobStates[i] = { status: 'skipped', skipReason: `Skipped by user (duplicate of ${jobFileName})`, existingUrl: duplicate.youtubeUrl }
           mainWindow?.webContents.send('upload:job-skipped', {
             index: i,
             jobId: job.id,
@@ -533,6 +547,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
     }
 
     // Notify start
+    liveJobStates[i] = { status: 'uploading', progress: 0 }
     mainWindow?.webContents.send('upload:job-start', { index: i, jobId: job.id, job })
 
     const attemptUpload = async (attempt: number): Promise<void> => {
@@ -546,7 +561,8 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
       const normalizedPath = job.filePath.trim()
       // ── OneDrive Files-On-Demand: detect placeholder and trigger download ──
       if (isOneDrivePlaceholder(normalizedPath)) {
-        mainWindow?.webContents.send('upload:job-syncing', { index: i, jobId: job.id, message: 'Syncing from OneDrive...' })
+            liveJobStates[i] = { status: 'syncing', progress: 0 }
+            mainWindow?.webContents.send('upload:job-syncing', { index: i, jobId: job.id, message: 'Syncing from OneDrive...' })
         addLog('info', 'OneDrive', `Placeholder detected for job ${i}: ${normalizedPath}`)
         await hydrateOneDriveFile(normalizedPath, (msg) => {
           mainWindow?.webContents.send('upload:job-syncing', { index: i, jobId: job.id, message: msg })
@@ -584,7 +600,8 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
         {
           onUploadProgress: (evt: any) => {
             const progress = Math.round((evt.bytesRead / fileStat.size) * 100)
-            mainWindow?.webContents.send('upload:progress', {
+            liveJobStates[i] = { ...liveJobStates[i], status: 'uploading', progress }
+          mainWindow?.webContents.send('upload:progress', {
               index: i,
               jobId: job.id,
               progress,
@@ -610,6 +627,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
       history.unshift(historyEntry)
       store.set('uploadHistory', history.slice(0, 1000))
 
+      liveJobStates[i] = { status: 'complete', progress: 100, videoId: videoId!, youtubeUrl: `https://www.youtube.com/watch?v=${videoId}` }
       mainWindow?.webContents.send('upload:job-complete', {
         index: i,
         jobId: job.id,
@@ -629,6 +647,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
       await attemptUpload(1)
     } catch (err: any) {
       // Auto-retry once after 3 seconds
+      liveJobStates[i] = { status: 'retrying' }
       mainWindow?.webContents.send('upload:job-retrying', {
         index: i,
         jobId: job.id,
@@ -646,6 +665,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
         if (errMsg.toLowerCase().includes('quota') || (err2.code === 403)) markQuotaExhausted()
         // Stop the queue if YouTube's channel upload limit was hit
         if (isUploadLimitError(errMsg)) markUploadLimitHit()
+        liveJobStates[i] = { status: 'error', error: errMsg, canRetry: true }
         mainWindow?.webContents.send('upload:job-error', {
           index: i,
           jobId: job.id,
@@ -685,6 +705,17 @@ ipcMain.handle('upload:cancel', async () => {
   isUploading = false
   return { success: true }
 })
+
+// Returns the live queue snapshot so the renderer can re-sync after navigation
+ipcMain.handle('upload:get-queue-state', async () => {
+  return {
+    isUploading,
+    currentIndex: currentUploadIndex,
+    jobs: uploadQueue,          // original job list with metadata
+    liveStates: liveJobStates,  // per-index status overrides
+  }
+})
+
 ipcMain.handle('upload:retry-job', async (event, job: any) => {
   // Retry a single failed job
   mainWindow?.webContents.send('upload:job-start', { index: job._queueIndex || 0, job })

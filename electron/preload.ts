@@ -63,6 +63,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     start: (jobs: any[]) => ipcRenderer.invoke('upload:start', jobs),
     cancel: () => ipcRenderer.invoke('upload:cancel'),
     getStatus: () => ipcRenderer.invoke('upload:get-status'),
+    getQueueState: () => ipcRenderer.invoke('upload:get-queue-state'),
     onJobStart: (callback: (data: any) => void) => {
       ipcRenderer.on('upload:job-start', (_, data) => callback(data))
     },

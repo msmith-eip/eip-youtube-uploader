@@ -114,6 +114,7 @@ declare global {
         start: (jobs: UploadJob[]) => Promise<{ success: boolean; error?: string }>
         cancel: () => Promise<{ success: boolean }>
         getStatus: () => Promise<{ isUploading: boolean; currentIndex: number; total: number }>
+        getQueueState: () => Promise<{ isUploading: boolean; currentIndex: number; jobs: UploadJob[]; liveStates: Record<number, any> }>
         onJobStart: (callback: (data: { index: number; job: UploadJob }) => void) => void
         onProgress: (callback: (data: { index: number; progress: number; bytesUploaded: number; totalBytes: number }) => void) => void
         onJobComplete: (callback: (data: { index: number; videoId: string; youtubeUrl: string }) => void) => void
