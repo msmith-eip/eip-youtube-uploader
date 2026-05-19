@@ -69,6 +69,7 @@ function formatTime(iso: string) {
 export default function Logs() {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [filter, setFilter] = useState<'all' | 'error' | 'warn' | 'info' | 'success'>('all')
+  const [dateFilter, setDateFilter] = useState<'today' | 'all'>('today')
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -109,13 +110,17 @@ export default function Logs() {
     }
   }, [logs, autoScroll])
 
+  const todayStr = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD in local time
   const filtered = logs.filter(log => {
     const matchLevel = filter === 'all' || log.level === filter
     const matchSearch = !search ||
       log.message.toLowerCase().includes(search.toLowerCase()) ||
       log.category.toLowerCase().includes(search.toLowerCase()) ||
       (log.detail || '').toLowerCase().includes(search.toLowerCase())
-    return matchLevel && matchSearch
+    const matchDate = dateFilter === 'all' || (
+      log.timestamp && new Date(log.timestamp).toLocaleDateString('en-CA') === todayStr
+    )
+    return matchLevel && matchSearch && matchDate
   })
 
   const counts = {
@@ -235,6 +240,22 @@ export default function Logs() {
 
       {/* Search + Filter Bar */}
       <div className="flex items-center gap-3 flex-shrink-0">
+        {/* Today / All date toggle */}
+        <div className="flex rounded-lg overflow-hidden border" style={{ borderColor: 'rgba(45,90,158,0.5)' }}>
+          {(['today', 'all'] as const).map(d => (
+            <button
+              key={d}
+              onClick={() => setDateFilter(d)}
+              className="px-3 py-1.5 text-xs font-semibold transition-colors"
+              style={{
+                background: dateFilter === d ? '#B22234' : 'rgba(15,47,97,0.6)',
+                color: dateFilter === d ? '#ffffff' : '#7491c4',
+              }}
+            >
+              {d === 'today' ? 'Today' : 'All Time'}
+            </button>
+          ))}
+        </div>
         <div className="flex-1 relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#4f73b3' }} />
           <input

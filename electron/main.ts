@@ -182,9 +182,14 @@ function isUploadLimitError(msg: string): boolean {
 }
 
 function markUploadLimitHit(): void {
-  cancelUpload = true
-  addLog('error', 'Upload', 'Channel upload limit reached — YouTube has blocked further uploads for today. The limit resets at midnight Pacific Time. Remaining jobs have been cancelled.')
-  mainWindow?.webContents.send('upload:limit-exceeded')
+  consecutiveUploadLimitErrors++
+  if (consecutiveUploadLimitErrors >= UPLOAD_LIMIT_STOP_THRESHOLD) {
+    cancelUpload = true
+    addLog('error', 'Upload', `Channel upload limit reached — YouTube has blocked further uploads for today (${consecutiveUploadLimitErrors} consecutive failures). The limit resets at midnight Pacific Time. Remaining jobs have been cancelled.`)
+    mainWindow?.webContents.send('upload:limit-exceeded')
+  } else {
+    addLog('warn', 'Upload', `Channel upload limit error (${consecutiveUploadLimitErrors}/${UPLOAD_LIMIT_STOP_THRESHOLD}) — will stop queue if this continues.`)
+  }
 }
 
 // ─── OAuth2 Setup ─────────────────────────────────────────────────────────────
@@ -208,6 +213,9 @@ let mainWindow: BrowserWindow | null = null
 // navigation so the renderer can re-sync when the Upload Queue page remounts.
 // Session-wide duplicate resolution: null = ask each time, 'skip' = skip all, 'new' = upload all as new
 let sessionDuplicateResolution: 'skip' | 'new' | null = null
+// Consecutive channel upload limit errors — stop queue only after 5 in a row
+let consecutiveUploadLimitErrors = 0
+const UPLOAD_LIMIT_STOP_THRESHOLD = 5
 
 let liveJobStates: Record<number, {
   status: 'uploading' | 'retrying' | 'syncing' | 'complete' | 'error' | 'skipped' | 'cancelled'
@@ -490,6 +498,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
   currentUploadIndex = 0
   liveJobStates = {}  // reset snapshot for new queue run
   sessionDuplicateResolution = null  // reset session-wide duplicate choice for new queue run
+  consecutiveUploadLimitErrors = 0   // reset upload limit error counter for new queue run
 
   const settings = store.get('settings') as any
   const delay = settings?.delayBetweenUploads || 2000
@@ -666,6 +675,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
       history.unshift(historyEntry)
       store.set('uploadHistory', history.slice(0, 1000))
 
+      consecutiveUploadLimitErrors = 0  // reset on success — limit errors must be consecutive to stop the queue
       liveJobStates[i] = { status: 'complete', progress: 100, videoId: videoId!, youtubeUrl: `https://www.youtube.com/watch?v=${videoId}` }
       mainWindow?.webContents.send('upload:job-complete', {
         index: i,
