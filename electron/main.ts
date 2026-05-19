@@ -110,7 +110,7 @@ export const QUOTA_COSTS = {
   PLAYLIST_ITEMS_LIST: 1,
   SEARCH_LIST: 100,
 } as const
-const QUOTA_DAILY_LIMIT = 10000
+const QUOTA_DAILY_LIMIT = 71000
 
 function getQuotaResetDatePT(): string {
   // Returns today's date in Pacific Time as YYYY-MM-DD
