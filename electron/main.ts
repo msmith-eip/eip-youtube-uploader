@@ -206,6 +206,9 @@ let cancelUpload = false
 let mainWindow: BrowserWindow | null = null
 // Live per-job state snapshot — keyed by job index. Persists across renderer
 // navigation so the renderer can re-sync when the Upload Queue page remounts.
+// Session-wide duplicate resolution: null = ask each time, 'skip' = skip all, 'new' = upload all as new
+let sessionDuplicateResolution: 'skip' | 'new' | null = null
+
 let liveJobStates: Record<number, {
   status: 'uploading' | 'retrying' | 'syncing' | 'complete' | 'error' | 'skipped' | 'cancelled'
   progress?: number
@@ -486,6 +489,7 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
   cancelUpload = false
   currentUploadIndex = 0
   liveJobStates = {}  // reset snapshot for new queue run
+  sessionDuplicateResolution = null  // reset session-wide duplicate choice for new queue run
 
   const settings = store.get('settings') as any
   const delay = settings?.delayBetweenUploads || 2000
@@ -511,38 +515,73 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
         (h: any) => h.status === 'success' && h.filePath && require('path').basename(h.filePath) === jobFileName
       )
       if (duplicate) {
-        addLog('info', 'Upload', `Duplicate found: ${jobFileName} — waiting for user resolution`)
-        // Emit event to renderer and wait for user's choice via IPC
-        mainWindow?.webContents.send('upload:duplicate-found', {
-          index: i,
-          fileName: jobFileName,
-          existingUrl: duplicate.youtubeUrl,
-          existingTitle: duplicate.title || jobFileName,
-          uploadedAt: duplicate.uploadedAt,
-        })
-        // Wait for user to resolve (resolve-duplicate IPC invoke)
-        const resolution: string = await new Promise((resolve) => {
-          const handler = (_evt: any, data: any) => {
-            if (data.index === i) {
-              ipcMain.removeHandler('upload:resolve-duplicate')
-              resolve(data.resolution)
-            }
-          }
-          ipcMain.handleOnce('upload:resolve-duplicate', handler)
-        })
-        if (resolution === 'skip') {
-          addLog('info', 'Upload', `User skipped duplicate: ${jobFileName}`)
-          liveJobStates[i] = { status: 'skipped', skipReason: `Skipped by user (duplicate of ${jobFileName})`, existingUrl: duplicate.youtubeUrl }
+        // If the user already made a session-wide choice, apply it silently
+        if (sessionDuplicateResolution === 'skip') {
+          addLog('info', 'Upload', `Auto-skipped duplicate (session choice): ${jobFileName}`)
+          liveJobStates[i] = { status: 'skipped', skipReason: `Auto-skipped duplicate (session choice)`, existingUrl: duplicate.youtubeUrl }
           mainWindow?.webContents.send('upload:job-skipped', {
             index: i,
             jobId: job.id,
-            reason: `Skipped by user (duplicate of ${jobFileName})`,
+            reason: `Auto-skipped duplicate (session choice)`,
             existingUrl: duplicate.youtubeUrl,
           })
           continue
         }
-        // 'replace' or 'new' — both proceed with upload; 'replace' is just informational
-        addLog('info', 'Upload', `User chose '${resolution}' for duplicate: ${jobFileName} — proceeding with upload`)
+        if (sessionDuplicateResolution === 'new') {
+          addLog('info', 'Upload', `Auto-uploading duplicate as new version (session choice): ${jobFileName}`)
+          // fall through to upload
+        } else {
+          // No session-wide choice yet — ask the user
+          addLog('info', 'Upload', `Duplicate found: ${jobFileName} — waiting for user resolution`)
+          mainWindow?.webContents.send('upload:duplicate-found', {
+            index: i,
+            fileName: jobFileName,
+            existingUrl: duplicate.youtubeUrl,
+            existingTitle: duplicate.title || jobFileName,
+            uploadedAt: duplicate.uploadedAt,
+          })
+          // Wait for user to resolve (resolve-duplicate IPC invoke)
+          const resolution: string = await new Promise((resolve) => {
+            const handler = (_evt: any, data: any) => {
+              if (data.index === i) {
+                ipcMain.removeHandler('upload:resolve-duplicate')
+                resolve(data.resolution)
+              }
+            }
+            ipcMain.handleOnce('upload:resolve-duplicate', handler)
+          })
+          if (resolution === 'skip-all') {
+            sessionDuplicateResolution = 'skip'
+            addLog('info', 'Upload', `User chose Skip All duplicates for this session`)
+            liveJobStates[i] = { status: 'skipped', skipReason: `Skipped by user (duplicate of ${jobFileName})`, existingUrl: duplicate.youtubeUrl }
+            mainWindow?.webContents.send('upload:job-skipped', {
+              index: i,
+              jobId: job.id,
+              reason: `Skipped by user (duplicate of ${jobFileName})`,
+              existingUrl: duplicate.youtubeUrl,
+            })
+            continue
+          }
+          if (resolution === 'skip') {
+            addLog('info', 'Upload', `User skipped duplicate: ${jobFileName}`)
+            liveJobStates[i] = { status: 'skipped', skipReason: `Skipped by user (duplicate of ${jobFileName})`, existingUrl: duplicate.youtubeUrl }
+            mainWindow?.webContents.send('upload:job-skipped', {
+              index: i,
+              jobId: job.id,
+              reason: `Skipped by user (duplicate of ${jobFileName})`,
+              existingUrl: duplicate.youtubeUrl,
+            })
+            continue
+          }
+          if (resolution === 'new-all') {
+            sessionDuplicateResolution = 'new'
+            addLog('info', 'Upload', `User chose Upload All as New Version for this session`)
+            // fall through to upload
+          } else {
+            // 'new' — single upload as new version
+            addLog('info', 'Upload', `User chose 'new' for duplicate: ${jobFileName} — proceeding with upload`)
+          }
+        }
       }
     }
 

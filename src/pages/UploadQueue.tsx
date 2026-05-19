@@ -803,6 +803,7 @@ export default function UploadQueue() {
                 </div>
                 <p className="text-sm text-dark-300 mb-4">What would you like to do?</p>
                 <div className="flex flex-col gap-2">
+                  {/* Upload as New Version — this one only */}
                   <button
                     onClick={async () => {
                       await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'new' })
@@ -812,29 +813,47 @@ export default function UploadQueue() {
                   >
                     <div>
                       <div>Upload as New Version</div>
-                      <div className="text-xs font-normal text-blue-200 mt-0.5">Upload again — both videos will exist on YouTube</div>
+                      <div className="text-xs font-normal text-blue-200 mt-0.5">Upload this one — both videos will exist on YouTube</div>
                     </div>
                   </button>
+                  {/* Upload ALL remaining duplicates as new versions */}
                   <button
                     onClick={async () => {
-                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'replace' })
+                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'new-all' })
                       setDuplicateDialog(null)
                     }}
-                    className="w-full px-4 py-3 rounded-xl bg-dark-700 hover:bg-dark-600 text-dark-100 text-sm font-semibold transition-colors text-left flex items-start gap-3 border border-dark-600"
+                    className="w-full px-4 py-3 rounded-xl bg-blue-900/60 hover:bg-blue-800/60 text-blue-200 text-sm font-semibold transition-colors text-left flex items-start gap-3 border border-blue-700/40"
                   >
                     <div>
-                      <div>Replace (Re-upload)</div>
-                      <div className="text-xs font-normal text-dark-400 mt-0.5">Upload again — the old video stays, this creates a new one with the same name</div>
+                      <div>Upload All as New Version</div>
+                      <div className="text-xs font-normal text-blue-300/70 mt-0.5">Apply to all remaining duplicates this session — no more prompts</div>
                     </div>
                   </button>
+                  {/* Skip this one only */}
                   <button
                     onClick={async () => {
                       await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'skip' })
                       setDuplicateDialog(null)
                     }}
-                    className="w-full px-4 py-3 rounded-xl bg-dark-800 hover:bg-dark-700 text-dark-400 text-sm font-medium transition-colors border border-dark-700"
+                    className="w-full px-4 py-3 rounded-xl bg-dark-800 hover:bg-dark-700 text-dark-300 text-sm font-medium transition-colors border border-dark-700 text-left"
                   >
-                    Skip this video
+                    <div>
+                      <div>Skip This Video</div>
+                      <div className="text-xs font-normal text-dark-500 mt-0.5">Skip this one, ask again for the next duplicate</div>
+                    </div>
+                  </button>
+                  {/* Skip ALL remaining duplicates */}
+                  <button
+                    onClick={async () => {
+                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'skip-all' })
+                      setDuplicateDialog(null)
+                    }}
+                    className="w-full px-4 py-3 rounded-xl bg-dark-900 hover:bg-dark-800 text-dark-400 text-sm font-medium transition-colors border border-dark-700 text-left"
+                  >
+                    <div>
+                      <div>Skip All Duplicates</div>
+                      <div className="text-xs font-normal text-dark-500 mt-0.5">Skip all remaining duplicates this session — no more prompts</div>
+                    </div>
                   </button>
                 </div>
               </div>
