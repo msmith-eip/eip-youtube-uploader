@@ -550,15 +550,21 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
             uploadedAt: duplicate.uploadedAt,
           })
           // Wait for user to resolve (resolve-duplicate IPC invoke)
+          // Use ipcMain.handle (not handleOnce) to avoid double-removal crash.
+          // We manually removeHandler once the correct index is received.
           const resolution: string = await new Promise((resolve) => {
             const handler = (_evt: any, data: any) => {
               if (data.index === i) {
-                ipcMain.removeHandler('upload:resolve-duplicate')
+                try { ipcMain.removeHandler('upload:resolve-duplicate') } catch (_) {}
                 resolve(data.resolution)
               }
             }
-            ipcMain.handleOnce('upload:resolve-duplicate', handler)
+            // Remove any stale handler before registering a new one
+            try { ipcMain.removeHandler('upload:resolve-duplicate') } catch (_) {}
+            ipcMain.handle('upload:resolve-duplicate', handler)
           })
+          // Always clean up the handler after resolution
+          try { ipcMain.removeHandler('upload:resolve-duplicate') } catch (_) {}
           if (resolution === 'skip-all') {
             sessionDuplicateResolution = 'skip'
             addLog('info', 'Upload', `User chose Skip All duplicates for this session`)
