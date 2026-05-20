@@ -806,8 +806,8 @@ export default function UploadQueue() {
                   {/* Upload as New Version — this one only */}
                   <button
                     onClick={async () => {
-                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'new' })
                       setDuplicateDialog(null)
+                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'new' })
                     }}
                     className="w-full px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors text-left flex items-start gap-3"
                   >
@@ -819,8 +819,8 @@ export default function UploadQueue() {
                   {/* Upload ALL remaining duplicates as new versions */}
                   <button
                     onClick={async () => {
-                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'new-all' })
                       setDuplicateDialog(null)
+                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'new-all' })
                     }}
                     className="w-full px-4 py-3 rounded-xl bg-blue-900/60 hover:bg-blue-800/60 text-blue-200 text-sm font-semibold transition-colors text-left flex items-start gap-3 border border-blue-700/40"
                   >
@@ -832,8 +832,8 @@ export default function UploadQueue() {
                   {/* Skip this one only */}
                   <button
                     onClick={async () => {
-                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'skip' })
                       setDuplicateDialog(null)
+                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'skip' })
                     }}
                     className="w-full px-4 py-3 rounded-xl bg-dark-800 hover:bg-dark-700 text-dark-300 text-sm font-medium transition-colors border border-dark-700 text-left"
                   >
@@ -845,8 +845,8 @@ export default function UploadQueue() {
                   {/* Skip ALL remaining duplicates */}
                   <button
                     onClick={async () => {
-                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'skip-all' })
                       setDuplicateDialog(null)
+                      await (window.electronAPI.upload as any).resolveDuplicate?.({ index: duplicateDialog.index, resolution: 'skip-all' })
                     }}
                     className="w-full px-4 py-3 rounded-xl bg-dark-900 hover:bg-dark-800 text-dark-400 text-sm font-medium transition-colors border border-dark-700 text-left"
                   >
