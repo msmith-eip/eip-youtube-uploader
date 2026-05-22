@@ -388,14 +388,14 @@ async function runMidnightQueue() {
           mainWindow?.webContents.send('upload:progress', { index: i, jobId: job.id, progress: pct, bytesUploaded: uploadedBytes, totalBytes: fileSize })
         },
       })
-      addQuota(100)
+      addQuota(100, 'videos.insert (auto-start)')
       const videoId = res.data.id || ''
       const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
       const ts = new Date().toISOString()
       jobUploadTimestamps[i] = ts
       liveJobStates[i] = { status: 'complete', progress: 100, videoId, youtubeUrl }
       mainWindow?.webContents.send('upload:job-complete', { index: i, jobId: job.id, videoId, youtubeUrl, uploadedAt: ts })
-      addLog('info', 'Upload', `Auto-start upload complete: ${job.fileName || job.filePath} → ${youtubeUrl}`)
+      addLog('info', 'Upload', `Auto-start upload complete: ${job.fileName || job.filePath} -> ${youtubeUrl}`)
       history.unshift({ status: 'success', filePath: job.filePath, title: job.title, videoId, youtubeUrl, uploadedAt: ts, channelId: job.channelId })
       store.set('uploadHistory', history.slice(0, 1000))
       consecutiveUploadLimitErrors = 0
@@ -407,7 +407,7 @@ async function runMidnightQueue() {
           markUploadLimitHit()
           break
         }
-      } else if (isQuotaError(errMsg)) {
+      } else if (errMsg.toLowerCase().includes('quota') || (err?.code === 403)) {
         markQuotaExhausted()
         break
       }
