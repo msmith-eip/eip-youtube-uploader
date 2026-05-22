@@ -216,6 +216,11 @@ let sessionDuplicateResolution: 'skip' | 'new' | null = null
 // Consecutive channel upload limit errors — stop queue only after 5 in a row
 let consecutiveUploadLimitErrors = 0
 const UPLOAD_LIMIT_STOP_THRESHOLD = 5
+// Excel session state — stored in main process so write-back survives page navigation
+let excelSessionPath: string | null = null
+let excelSessionBase64: string | null = null
+// Per-job upload timestamps — keyed by job index, set at actual upload completion time
+let jobUploadTimestamps: Record<number, string> = {}
 
 let liveJobStates: Record<number, {
   status: 'uploading' | 'retrying' | 'syncing' | 'complete' | 'error' | 'skipped' | 'cancelled'
@@ -489,7 +494,12 @@ ipcMain.handle('history:clear', async () => {
 })
 
 // ─── IPC: Upload ──────────────────────────────────────────────────────────────
-ipcMain.handle('upload:start', async (event, jobs: any[]) => {
+ipcMain.handle('upload:start', async (event, payload: any) => {
+  // Accept either (jobs[]) for backward compat or ({ jobs, excelPath, excelBase64 })
+  const jobs: any[] = Array.isArray(payload) ? payload : (payload?.jobs || [])
+  const incomingExcelPath: string | null = Array.isArray(payload) ? null : (payload?.excelPath || null)
+  const incomingExcelBase64: string | null = Array.isArray(payload) ? null : (payload?.excelBase64 || null)
+
   if (isUploading) return { success: false, error: 'Upload already in progress' }
 
   uploadQueue = jobs
@@ -499,6 +509,10 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
   liveJobStates = {}  // reset snapshot for new queue run
   sessionDuplicateResolution = null  // reset session-wide duplicate choice for new queue run
   consecutiveUploadLimitErrors = 0   // reset upload limit error counter for new queue run
+  jobUploadTimestamps = {}           // reset per-job timestamps for new queue run
+  // Store Excel session state in main process for reliable write-back
+  if (incomingExcelPath) excelSessionPath = incomingExcelPath
+  if (incomingExcelBase64) excelSessionBase64 = incomingExcelBase64
 
   const settings = store.get('settings') as any
   const delay = settings?.delayBetweenUploads || 2000
@@ -682,12 +696,15 @@ ipcMain.handle('upload:start', async (event, jobs: any[]) => {
       store.set('uploadHistory', history.slice(0, 1000))
 
       consecutiveUploadLimitErrors = 0  // reset on success — limit errors must be consecutive to stop the queue
+      const completedAt = new Date().toISOString()
+      jobUploadTimestamps[i] = completedAt
       liveJobStates[i] = { status: 'complete', progress: 100, videoId: videoId!, youtubeUrl: `https://www.youtube.com/watch?v=${videoId}` }
       mainWindow?.webContents.send('upload:job-complete', {
         index: i,
         jobId: job.id,
         videoId,
         youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        uploadedAt: completedAt,
       })
 
       // Check if YouTube silently forced the video to private (unverified API project)
@@ -768,7 +785,16 @@ ipcMain.handle('upload:get-queue-state', async () => {
     currentIndex: currentUploadIndex,
     jobs: uploadQueue,          // original job list with metadata
     liveStates: liveJobStates,  // per-index status overrides
+    excelSessionPath,           // so renderer knows which file to write back to
+    jobUploadTimestamps,        // actual per-job completion timestamps
   }
+})
+
+// Allows renderer to update the in-memory Excel base64 after each write-back
+// so subsequent write-backs build on the latest file state
+ipcMain.handle('upload:update-excel-base64', async (_event, base64: string) => {
+  if (base64) excelSessionBase64 = base64
+  return { success: true }
 })
 
 ipcMain.handle('upload:retry-job', async (event, job: any) => {

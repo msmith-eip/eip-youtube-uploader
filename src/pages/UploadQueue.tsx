@@ -78,24 +78,24 @@ export default function UploadQueue() {
       ))
     })
 
-    window.electronAPI.upload.onJobComplete(({ index, jobId, videoId, youtubeUrl }: any) => {
+    window.electronAPI.upload.onJobComplete(({ index, jobId, videoId, youtubeUrl, uploadedAt: completedAt }: any) => {
       setUploadJobs(prev => {
         const updated: UploadJob[] = prev.map((job, i) =>
-          (jobId ? job.id === jobId : i === index) ? { ...job, status: 'complete' as const, progress: 100, videoId, youtubeUrl } : job
+          (jobId ? job.id === jobId : i === index) ? { ...job, status: 'complete' as const, progress: 100, videoId, youtubeUrl, uploadedAt: completedAt } : job
         )
         uploadJobsRef.current = updated
         // Write back to Excel immediately after each successful upload
         const _base64 = excelBase64Ref.current
         const _path = excelFilePathRef.current
         if (_base64 && _path && window.electronAPI) {
-          const results = updated.map(j => ({
+          const results = updated.map((j, i) => ({
             filename: j.filePath || j.fileName,
             fileName: j.fileName,
             status: j.status as 'complete' | 'error' | 'pending',
             videoId: j.videoId,
             youtubeUrl: j.youtubeUrl,
             error: j.error,
-            uploadedAt: new Date().toISOString(),
+            uploadedAt: (j as any).uploadedAt || new Date().toISOString(),
           }))
           try {
             const updatedBuffer = writeBackToExcel(_base64, results)
@@ -103,6 +103,8 @@ export default function UploadQueue() {
             // Update the in-memory base64 so the next write-back builds on the latest file state
             const updatedBase64 = bufferToBase64(updatedBuffer)
             excelBase64Ref.current = updatedBase64
+            // Also sync the updated base64 back to main process so it survives navigation
+            ;(window.electronAPI.upload as any).updateExcelBase64?.(updatedBase64).catch(() => {})
             window.electronAPI.fs.overwriteFile({ filePath: _path, data: dataArray }).catch(() => {})
           } catch (err: any) {
             console.error('[WriteBack] Per-job write-back failed:', err?.message)
@@ -267,12 +269,18 @@ export default function UploadQueue() {
 
   // Sync queue state on page mount — if an upload is running while the user navigated
   // away, restore the live job statuses so the UI shows the correct state on return.
+  // Also restore Excel session refs from main process so write-back continues correctly.
   useEffect(() => {
     if (!window.electronAPI) return
     ;(window.electronAPI.upload as any).getQueueState?.().then((snapshot: any) => {
       if (!snapshot?.isUploading) return
-      const { jobs, liveStates } = snapshot
+      const { jobs, liveStates, excelSessionPath: snapPath, jobUploadTimestamps: snapTimestamps } = snapshot
       if (!jobs || jobs.length === 0) return
+      // Restore Excel path ref if we lost it due to navigation
+      if (snapPath && !excelFilePathRef.current) {
+        excelFilePathRef.current = snapPath
+        setExcelFilePath(snapPath)
+      }
       setUploadJobs((prev: UploadJob[]) => {
         // Only sync if the current jobs array matches the snapshot (same length)
         if (prev.length !== jobs.length) return prev
@@ -289,11 +297,12 @@ export default function UploadQueue() {
             canRetry: live.canRetry ?? job.canRetry,
             skipReason: live.skipReason ?? job.skipReason,
             existingUrl: live.existingUrl ?? job.existingUrl,
+            uploadedAt: (snapTimestamps?.[idx]) ?? (job as any).uploadedAt,
           }
         })
       })
     }).catch(() => {})
-  }, [setUploadJobs])
+  }, [setUploadJobs, setExcelFilePath])
 
   // ── File Operations ──────────────────────────────────────────────────────────
   const handleAddVideos = async () => {
@@ -541,7 +550,12 @@ export default function UploadQueue() {
           }
         }
       }
-      await window.electronAPI.upload.start(pendingJobs)
+      // Pass Excel session state to main process for reliable write-back
+      await window.electronAPI.upload.start({
+        jobs: pendingJobs,
+        excelPath: excelFilePathRef.current || null,
+        excelBase64: excelBase64Ref.current || null,
+      })
     } else {
       // Demo mode simulation
       for (let i = 0; i < pendingJobs.length; i++) {

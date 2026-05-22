@@ -60,7 +60,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Upload
   upload: {
-    start: (jobs: any[]) => ipcRenderer.invoke('upload:start', jobs),
+    start: (payload: any) => ipcRenderer.invoke('upload:start', payload),
+    updateExcelBase64: (base64: string) => ipcRenderer.invoke('upload:update-excel-base64', base64),
     cancel: () => ipcRenderer.invoke('upload:cancel'),
     getStatus: () => ipcRenderer.invoke('upload:get-status'),
     getQueueState: () => ipcRenderer.invoke('upload:get-queue-state'),

@@ -111,10 +111,11 @@ declare global {
         clear: () => Promise<{ success: boolean }>
       }
       upload: {
-        start: (jobs: UploadJob[]) => Promise<{ success: boolean; error?: string }>
+        start: (payload: { jobs: UploadJob[]; excelPath?: string | null; excelBase64?: string | null } | UploadJob[]) => Promise<{ success: boolean; error?: string }>
+        updateExcelBase64: (base64: string) => Promise<{ success: boolean }>
         cancel: () => Promise<{ success: boolean }>
         getStatus: () => Promise<{ isUploading: boolean; currentIndex: number; total: number }>
-        getQueueState: () => Promise<{ isUploading: boolean; currentIndex: number; jobs: UploadJob[]; liveStates: Record<number, any> }>
+        getQueueState: () => Promise<{ isUploading: boolean; currentIndex: number; jobs: UploadJob[]; liveStates: Record<number, any>; excelSessionPath?: string; jobUploadTimestamps?: Record<number, string> }>
         onJobStart: (callback: (data: { index: number; job: UploadJob }) => void) => void
         onProgress: (callback: (data: { index: number; progress: number; bytesUploaded: number; totalBytes: number }) => void) => void
         onJobComplete: (callback: (data: { index: number; videoId: string; youtubeUrl: string }) => void) => void
