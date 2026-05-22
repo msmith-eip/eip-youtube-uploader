@@ -50,6 +50,7 @@ export default function UploadQueue() {
     existingTitle: string
     uploadedAt: string
   } | null>(null)
+  const [duplicateCountdown, setDuplicateCountdown] = useState<number>(30)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
   // Refs so the IPC closure always has the latest Excel state
@@ -61,6 +62,29 @@ export default function UploadQueue() {
     setToast({ type, message })
     setTimeout(() => setToast(null), 4000)
   }, [])
+
+  // Auto-skip duplicate dialog after 30 seconds
+  useEffect(() => {
+    if (!duplicateDialog) {
+      setDuplicateCountdown(30)
+      return
+    }
+    setDuplicateCountdown(30)
+    const interval = setInterval(() => {
+      setDuplicateCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(interval)
+          // Auto-trigger Skip All
+          const dlg = duplicateDialog
+          setDuplicateDialog(null)
+          ;(window.electronAPI.upload as any).resolveDuplicate?.({ index: dlg.index, resolution: 'skip-all' })
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [duplicateDialog])
 
   // Register upload event listeners
   useEffect(() => {
@@ -174,7 +198,16 @@ export default function UploadQueue() {
 
     ;(window.electronAPI.upload as any).onLimitExceeded?.(() => {
       setIsUploading(false)
-      showToast('error', 'YouTube channel upload limit reached — uploads stopped. The limit resets at midnight Pacific Time.')
+      showToast('error', 'YouTube channel upload limit reached -- uploads stopped. The limit resets at midnight Pacific Time.')
+    })
+
+    // Midnight auto-start: main process sends this event when the scheduled queue begins
+    ;(window.electronAPI.upload as any).onAutoStart?.((data: { jobs: any[] }) => {
+      if (data?.jobs && data.jobs.length > 0) {
+        setUploadJobs(data.jobs)
+        setIsUploading(true)
+        showToast('info', `Midnight auto-start: resuming ${data.jobs.length} jobs`)
+      }
     })
 
     window.electronAPI.upload.onAllComplete(async () => {
@@ -556,6 +589,12 @@ export default function UploadQueue() {
         excelPath: excelFilePathRef.current || null,
         excelBase64: excelBase64Ref.current || null,
       })
+      // Persist queue to disk so the midnight auto-start scheduler can resume it
+      ;(window.electronAPI.upload as any).savePendingQueue?.({
+        jobs: pendingJobs,
+        excelPath: excelFilePathRef.current || null,
+        excelBase64: excelBase64Ref.current || null,
+      }).catch(() => {})
     } else {
       // Demo mode simulation
       for (let i = 0; i < pendingJobs.length; i++) {
@@ -792,9 +831,12 @@ export default function UploadQueue() {
                   <div className="w-10 h-10 rounded-xl bg-yellow-500/15 border border-yellow-500/30 flex items-center justify-center flex-shrink-0">
                     <AlertCircle size={20} className="text-yellow-400" />
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <h3 className="text-base font-bold text-dark-50">Duplicate Video Found</h3>
                     <p className="text-xs text-dark-400 mt-0.5">This file was already uploaded to YouTube.</p>
+                  </div>
+                  <div className="flex-shrink-0 w-9 h-9 rounded-full border-2 border-yellow-500/50 flex items-center justify-center">
+                    <span className="text-xs font-bold text-yellow-400">{duplicateCountdown}</span>
                   </div>
                 </div>
                 <div className="rounded-xl bg-dark-800 border border-dark-700 px-4 py-3 mb-5">
@@ -865,7 +907,7 @@ export default function UploadQueue() {
                     className="w-full px-4 py-3 rounded-xl bg-dark-900 hover:bg-dark-800 text-dark-400 text-sm font-medium transition-colors border border-dark-700 text-left"
                   >
                     <div>
-                      <div>Skip All Duplicates</div>
+                      <div className="flex items-center gap-2">Skip All Duplicates <span className="text-xs text-yellow-500/70">(auto in {duplicateCountdown}s)</span></div>
                       <div className="text-xs font-normal text-dark-500 mt-0.5">Skip all remaining duplicates this session — no more prompts</div>
                     </div>
                   </button>

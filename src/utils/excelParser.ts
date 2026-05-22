@@ -447,11 +447,11 @@ export function writeBackToExcel(
     if (!result) continue
 
     const rawTs = result.uploadedAt || new Date().toISOString()
-    // Format as readable local time: MM/DD/YYYY h:mm AM/PM
+    // Format as readable local time: MM/DD/YYYY h:mm:ss AM/PM
     const tsDate = new Date(rawTs)
     const ts = tsDate.toLocaleString('en-US', {
       month: '2-digit', day: '2-digit', year: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true
+      hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true
     })
     if (result.status === 'complete') {
       row[statusCol]     = 'Uploaded ✓'

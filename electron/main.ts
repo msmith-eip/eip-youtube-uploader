@@ -84,6 +84,8 @@ const store = new Store({
       usedUnits: 0,
       resetDate: '',  // ISO date string YYYY-MM-DD (Pacific Time)
     },
+    // Persisted queue for midnight auto-start: { jobs, excelPath, excelBase64 }
+    pendingQueue: null as any,
   },
 })
 
@@ -272,7 +274,156 @@ function createWindow() {
   })
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  createWindow()
+  scheduleMidnightAutoStart()
+})
+
+// ─── Midnight Auto-Start Scheduler ────────────────────────────────────────────
+// At 12:05 AM local time, if the app is open and there is a pending queue saved,
+// automatically start uploading. Failed jobs from a previous run are retried.
+function scheduleMidnightAutoStart() {
+  const scheduleNext = () => {
+    const now = new Date()
+    const next = new Date()
+    next.setHours(0, 5, 0, 0)  // 12:05 AM
+    if (next <= now) next.setDate(next.getDate() + 1)  // already past — schedule for tomorrow
+    const msUntil = next.getTime() - now.getTime()
+    addLog('info', 'App', `Midnight auto-start scheduled in ${Math.round(msUntil / 60000)} minutes (at 12:05 AM)`)
+    setTimeout(async () => {
+      try {
+        await runMidnightQueue()
+      } catch (err: any) {
+        addLog('error', 'App', `Midnight auto-start error: ${err?.message || String(err)}`)
+      }
+      scheduleNext()  // reschedule for the next day
+    }, msUntil)
+  }
+  scheduleNext()
+}
+
+async function runMidnightQueue() {
+  const pending = store.get('pendingQueue') as any
+  if (!pending || !pending.jobs || pending.jobs.length === 0) {
+    addLog('info', 'App', 'Midnight auto-start: no pending queue found — skipping')
+    return
+  }
+  if (isUploading) {
+    addLog('info', 'App', 'Midnight auto-start: upload already in progress — skipping')
+    return
+  }
+  const tokens = store.get('tokens') as any
+  if (!tokens) {
+    addLog('warn', 'App', 'Midnight auto-start: not authenticated — skipping')
+    return
+  }
+
+  // Reset failed jobs to pending so they get retried; leave completed/skipped as-is
+  const jobs = (pending.jobs as any[]).map((job: any) => {
+    if (job.status === 'error' || job.status === 'failed') {
+      return { ...job, status: 'pending', error: undefined, progress: 0 }
+    }
+    return job
+  })
+  const failedCount = jobs.filter((j: any) => j.status === 'pending').length
+  const totalCount = jobs.length
+  addLog('info', 'App', `Midnight auto-start: starting queue — ${totalCount} total jobs, ${failedCount} pending/retrying`)
+
+  // Notify the renderer so the Upload Queue page can update its state
+  mainWindow?.webContents.send('upload:auto-start', { jobs })
+
+  // Run the queue — session-wide duplicate resolution defaults to skip-all for unattended runs
+  sessionDuplicateResolution = 'skip'
+  uploadQueue = jobs
+  isUploading = true
+  cancelUpload = false
+  currentUploadIndex = 0
+  liveJobStates = {}
+  consecutiveUploadLimitErrors = 0
+  jobUploadTimestamps = {}
+  if (pending.excelPath) excelSessionPath = pending.excelPath
+  if (pending.excelBase64) excelSessionBase64 = pending.excelBase64
+
+  const settings = store.get('settings') as any
+  const delay = settings?.delayBetweenUploads || 2000
+  const history = (store.get('uploadHistory') as any[]) || []
+
+  for (let i = 0; i < uploadQueue.length; i++) {
+    if (cancelUpload) break
+    currentUploadIndex = i
+    const job = uploadQueue[i]
+    if (job.status === 'complete' || job.status === 'skipped') continue
+
+    liveJobStates[i] = { status: 'uploading', progress: 0 }
+    mainWindow?.webContents.send('upload:job-start', { index: i, jobId: job.id, job })
+
+    try {
+      const tokens2 = store.get('tokens') as any
+      if (tokens2) oauth2Client.setCredentials(tokens2)
+      const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
+      const normalizedPath = job.filePath.trim()
+      const resolvedPath = resolveFilePath(normalizedPath)
+      const fileStream = require('fs').createReadStream(resolvedPath)
+      const fileSize = require('fs').statSync(resolvedPath).size
+      let uploadedBytes = 0
+      const res = await youtube.videos.insert({
+        part: ['snippet', 'status'],
+        requestBody: {
+          snippet: {
+            title: job.title || require('path').basename(resolvedPath, require('path').extname(resolvedPath)),
+            description: job.description || '',
+            categoryId: job.category || (store.get('settings') as any)?.defaultCategory || '22',
+            tags: job.tags || [],
+          },
+          status: {
+            privacyStatus: job.privacy || (store.get('settings') as any)?.defaultPrivacy || 'unlisted',
+          },
+        },
+        media: { body: fileStream },
+      } as any, {
+        onUploadProgress: (evt: any) => {
+          uploadedBytes = evt.bytesRead || 0
+          const pct = fileSize > 0 ? Math.round((uploadedBytes / fileSize) * 100) : 0
+          liveJobStates[i] = { ...liveJobStates[i], status: 'uploading', progress: pct }
+          mainWindow?.webContents.send('upload:progress', { index: i, jobId: job.id, progress: pct, bytesUploaded: uploadedBytes, totalBytes: fileSize })
+        },
+      })
+      addQuota(100)
+      const videoId = res.data.id || ''
+      const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`
+      const ts = new Date().toISOString()
+      jobUploadTimestamps[i] = ts
+      liveJobStates[i] = { status: 'complete', progress: 100, videoId, youtubeUrl }
+      mainWindow?.webContents.send('upload:job-complete', { index: i, jobId: job.id, videoId, youtubeUrl, uploadedAt: ts })
+      addLog('info', 'Upload', `Auto-start upload complete: ${job.fileName || job.filePath} → ${youtubeUrl}`)
+      history.unshift({ status: 'success', filePath: job.filePath, title: job.title, videoId, youtubeUrl, uploadedAt: ts, channelId: job.channelId })
+      store.set('uploadHistory', history.slice(0, 1000))
+      consecutiveUploadLimitErrors = 0
+    } catch (err: any) {
+      const errMsg = err?.message || String(err)
+      if (isUploadLimitError(errMsg)) {
+        consecutiveUploadLimitErrors++
+        if (consecutiveUploadLimitErrors >= UPLOAD_LIMIT_STOP_THRESHOLD) {
+          markUploadLimitHit()
+          break
+        }
+      } else if (isQuotaError(errMsg)) {
+        markQuotaExhausted()
+        break
+      }
+      liveJobStates[i] = { status: 'error', error: errMsg }
+      mainWindow?.webContents.send('upload:job-error', { index: i, jobId: job.id, error: errMsg })
+      addLog('error', 'Upload', `Auto-start upload failed: ${job.fileName || job.filePath} — ${errMsg}`)
+    }
+    if (i < uploadQueue.length - 1 && !cancelUpload) {
+      await new Promise(resolve => setTimeout(resolve, delay))
+    }
+  }
+
+  isUploading = false
+  mainWindow?.webContents.send('upload:all-complete', { total: uploadQueue.length, cancelled: cancelUpload })
+  addLog('info', 'App', 'Midnight auto-start: queue complete')
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
@@ -794,6 +945,12 @@ ipcMain.handle('upload:get-queue-state', async () => {
 // so subsequent write-backs build on the latest file state
 ipcMain.handle('upload:update-excel-base64', async (_event, base64: string) => {
   if (base64) excelSessionBase64 = base64
+  return { success: true }
+})
+
+// Persists the current queue to disk so the midnight scheduler can resume it
+ipcMain.handle('upload:save-pending-queue', async (_event, payload: { jobs: any[], excelPath: string | null, excelBase64: string | null }) => {
+  store.set('pendingQueue', payload)
   return { success: true }
 })
 

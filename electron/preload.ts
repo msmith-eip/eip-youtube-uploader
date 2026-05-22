@@ -95,11 +95,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     resolveDuplicate: (data: any) => ipcRenderer.invoke('upload:resolve-duplicate', data),
     retryJob: (job: any) => ipcRenderer.invoke('upload:retry-job', job),
     forceUploadJob: (job: any) => ipcRenderer.invoke('upload:force-upload-job', job),
+    savePendingQueue: (payload: any) => ipcRenderer.invoke('upload:save-pending-queue', payload),
     onAllComplete: (callback: (data: any) => void) => {
       ipcRenderer.on('upload:all-complete', (_, data) => callback(data))
     },
     onLimitExceeded: (callback: () => void) => {
       ipcRenderer.on('upload:limit-exceeded', () => callback())
+    },
+    onAutoStart: (callback: (data: any) => void) => {
+      ipcRenderer.on('upload:auto-start', (_, data) => callback(data))
     },
     removeAllListeners: () => {
       ipcRenderer.removeAllListeners('upload:job-start')
@@ -113,6 +117,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeAllListeners('upload:duplicate-found')
       ipcRenderer.removeAllListeners('upload:all-complete')
       ipcRenderer.removeAllListeners('upload:limit-exceeded')
+      ipcRenderer.removeAllListeners('upload:auto-start')
     },
   },
   // Quota

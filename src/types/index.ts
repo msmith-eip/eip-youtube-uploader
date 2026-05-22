@@ -128,6 +128,8 @@ declare global {
         onDuplicateFound?: (callback: (data: { index: number; fileName: string; existingUrl: string; existingTitle: string; uploadedAt: string }) => void) => void
         forceUploadJob?: (job: any) => Promise<{ success: boolean; error?: string }>
         resolveDuplicate?: (data: { index: number; resolution: 'replace' | 'new' | 'skip' }) => Promise<void>
+        savePendingQueue?: (payload: { jobs: any[]; excelPath: string | null; excelBase64: string | null }) => Promise<{ success: boolean }>
+        onAutoStart?: (callback: (data: { jobs: any[] }) => void) => void
         removeAllListeners: () => void
       }
       quota: {
