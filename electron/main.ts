@@ -84,7 +84,7 @@ const store = new Store({
       usedUnits: 0,
       resetDate: '',  // ISO date string YYYY-MM-DD (Pacific Time)
     },
-    // Persisted queue for midnight auto-start: { jobs, excelPath, excelBase64 }
+    // Persisted queue for 3:05 AM auto-start: { jobs, excelPath, excelBase64 }
     pendingQueue: null as any,
   },
 })
@@ -279,22 +279,22 @@ app.whenReady().then(() => {
   scheduleMidnightAutoStart()
 })
 
-// ─── Midnight Auto-Start Scheduler ────────────────────────────────────────────
-// At 12:05 AM local time, if the app is open and there is a pending queue saved,
+// ─── 3:05 AM Auto-Start Scheduler ─────────────────────────────────────────────
+// At 3:05 AM local time, if the app is open and there is a pending queue saved,
 // automatically start uploading. Failed jobs from a previous run are retried.
 function scheduleMidnightAutoStart() {
   const scheduleNext = () => {
     const now = new Date()
     const next = new Date()
-    next.setHours(0, 5, 0, 0)  // 12:05 AM
+    next.setHours(3, 5, 0, 0)  // 3:05 AM
     if (next <= now) next.setDate(next.getDate() + 1)  // already past — schedule for tomorrow
     const msUntil = next.getTime() - now.getTime()
-    addLog('info', 'App', `Midnight auto-start scheduled in ${Math.round(msUntil / 60000)} minutes (at 12:05 AM)`)
+    addLog('info', 'App', `Auto-start scheduled in ${Math.round(msUntil / 60000)} minutes (at 3:05 AM)`)
     setTimeout(async () => {
       try {
         await runMidnightQueue()
       } catch (err: any) {
-        addLog('error', 'App', `Midnight auto-start error: ${err?.message || String(err)}`)
+        addLog('error', 'App', `Auto-start error: ${err?.message || String(err)}`)
       }
       scheduleNext()  // reschedule for the next day
     }, msUntil)
@@ -305,16 +305,16 @@ function scheduleMidnightAutoStart() {
 async function runMidnightQueue() {
   const pending = store.get('pendingQueue') as any
   if (!pending || !pending.jobs || pending.jobs.length === 0) {
-    addLog('info', 'App', 'Midnight auto-start: no pending queue found — skipping')
+    addLog('info', 'App', 'Auto-start: no pending queue found — skipping')
     return
   }
   if (isUploading) {
-    addLog('info', 'App', 'Midnight auto-start: upload already in progress — skipping')
+    addLog('info', 'App', 'Auto-start: upload already in progress — skipping')
     return
   }
   const tokens = store.get('tokens') as any
   if (!tokens) {
-    addLog('warn', 'App', 'Midnight auto-start: not authenticated — skipping')
+    addLog('warn', 'App', 'Auto-start: not authenticated — skipping')
     return
   }
 
@@ -327,7 +327,7 @@ async function runMidnightQueue() {
   })
   const failedCount = jobs.filter((j: any) => j.status === 'pending').length
   const totalCount = jobs.length
-  addLog('info', 'App', `Midnight auto-start: starting queue — ${totalCount} total jobs, ${failedCount} pending/retrying`)
+  addLog('info', 'App', `Auto-start: starting queue — ${totalCount} total jobs, ${failedCount} pending/retrying`)
 
   // Notify the renderer so the Upload Queue page can update its state
   mainWindow?.webContents.send('upload:auto-start', { jobs })
@@ -396,7 +396,16 @@ async function runMidnightQueue() {
       liveJobStates[i] = { status: 'complete', progress: 100, videoId, youtubeUrl }
       mainWindow?.webContents.send('upload:job-complete', { index: i, jobId: job.id, videoId, youtubeUrl, uploadedAt: ts })
       addLog('info', 'Upload', `Auto-start upload complete: ${job.fileName || job.filePath} -> ${youtubeUrl}`)
-      history.unshift({ status: 'success', filePath: job.filePath, title: job.title, videoId, youtubeUrl, uploadedAt: ts, channelId: job.channelId })
+      history.unshift({
+        id: videoId,
+        title: job.title || job.fileName || '',
+        channel: job.channelName || job.channelId || '',
+        privacy: job.privacy || 'public',
+        uploadedAt: ts,
+        filePath: job.filePath,
+        youtubeUrl,
+        status: 'success',
+      })
       store.set('uploadHistory', history.slice(0, 1000))
       consecutiveUploadLimitErrors = 0
     } catch (err: any) {
@@ -414,6 +423,18 @@ async function runMidnightQueue() {
       liveJobStates[i] = { status: 'error', error: errMsg }
       mainWindow?.webContents.send('upload:job-error', { index: i, jobId: job.id, error: errMsg })
       addLog('error', 'Upload', `Auto-start upload failed: ${job.fileName || job.filePath} — ${errMsg}`)
+      history.unshift({
+        id: `failed-${Date.now()}-${i}`,
+        title: job.title || job.fileName || '',
+        channel: job.channelName || job.channelId || '',
+        privacy: job.privacy || 'public',
+        uploadedAt: new Date().toISOString(),
+        filePath: job.filePath,
+        youtubeUrl: '',
+        status: 'failed',
+        error: errMsg,
+      })
+      store.set('uploadHistory', history.slice(0, 1000))
     }
     if (i < uploadQueue.length - 1 && !cancelUpload) {
       await new Promise(resolve => setTimeout(resolve, delay))
@@ -422,7 +443,7 @@ async function runMidnightQueue() {
 
   isUploading = false
   mainWindow?.webContents.send('upload:all-complete', { total: uploadQueue.length, cancelled: cancelUpload })
-  addLog('info', 'App', 'Midnight auto-start: queue complete')
+  addLog('info', 'App', 'Auto-start: queue complete')
 }
 
 app.on('window-all-closed', () => {
@@ -948,7 +969,7 @@ ipcMain.handle('upload:update-excel-base64', async (_event, base64: string) => {
   return { success: true }
 })
 
-// Persists the current queue to disk so the midnight scheduler can resume it
+// Persists the current queue to disk so the 3:05 AM scheduler can resume it
 ipcMain.handle('upload:save-pending-queue', async (_event, payload: { jobs: any[], excelPath: string | null, excelBase64: string | null }) => {
   store.set('pendingQueue', payload)
   return { success: true }

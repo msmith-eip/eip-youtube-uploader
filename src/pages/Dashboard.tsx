@@ -436,8 +436,8 @@ export default function Dashboard() {
                       <CheckCircle size={12} style={{ color: '#4ade80' }} />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold text-white truncate">{item.title}</div>
-                      <div className="text-[10px] truncate" style={{ color: '#4f73b3' }}>{item.channel}</div>
+                      <div className="text-xs font-semibold text-white truncate">{item.title || '(untitled)'}</div>
+                      <div className="text-[10px] truncate" style={{ color: '#4f73b3' }}>{item.channel || ''}</div>
                     </div>
                     <a
                       href={item.youtubeUrl}

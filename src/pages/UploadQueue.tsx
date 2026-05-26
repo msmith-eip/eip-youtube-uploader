@@ -201,12 +201,12 @@ export default function UploadQueue() {
       showToast('error', 'YouTube channel upload limit reached -- uploads stopped. The limit resets at midnight Pacific Time.')
     })
 
-    // Midnight auto-start: main process sends this event when the scheduled queue begins
+    // 3:05 AM auto-start: main process sends this event when the scheduled queue begins
     ;(window.electronAPI.upload as any).onAutoStart?.((data: { jobs: any[] }) => {
       if (data?.jobs && data.jobs.length > 0) {
         setUploadJobs(data.jobs)
         setIsUploading(true)
-        showToast('info', `Midnight auto-start: resuming ${data.jobs.length} jobs`)
+        showToast('info', `3:05 AM auto-start: resuming ${data.jobs.length} jobs`)
       }
     })
 
@@ -589,7 +589,7 @@ export default function UploadQueue() {
         excelPath: excelFilePathRef.current || null,
         excelBase64: excelBase64Ref.current || null,
       })
-      // Persist queue to disk so the midnight auto-start scheduler can resume it
+      // Persist queue to disk so the 3:05 AM auto-start scheduler can resume it
       ;(window.electronAPI.upload as any).savePendingQueue?.({
         jobs: pendingJobs,
         excelPath: excelFilePathRef.current || null,

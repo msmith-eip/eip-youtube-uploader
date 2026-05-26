@@ -59,10 +59,13 @@ const LEVEL_CONFIG = {
   },
 }
 
-function formatTime(iso: string) {
+function formatTime(iso: string, showDate = false) {
   try {
     const d = new Date(iso)
-    return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    const time = d.toLocaleTimeString('en-US', { hour12: true, hour: 'numeric', minute: '2-digit', second: '2-digit' })
+    if (!showDate) return time
+    const date = d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' })
+    return `${date} ${time}`
   } catch { return iso }
 }
 
@@ -124,10 +127,10 @@ export default function Logs() {
   })
 
   const counts = {
-    error:   logs.filter(l => l.level === 'error').length,
-    warn:    logs.filter(l => l.level === 'warn').length,
-    info:    logs.filter(l => l.level === 'info').length,
-    success: logs.filter(l => l.level === 'success').length,
+    error:   filtered.filter(l => l.level === 'error').length,
+    warn:    filtered.filter(l => l.level === 'warn').length,
+    info:    filtered.filter(l => l.level === 'info').length,
+    success: filtered.filter(l => l.level === 'success').length,
   }
 
   const handleCopyAll = useCallback(async () => {
@@ -333,7 +336,7 @@ export default function Logs() {
                       {/* Level icon */}
                       <Icon size={13} className="flex-shrink-0 mt-0.5" style={{ color: cfg.color }} />
                       {/* Time */}
-                      <span className="flex-shrink-0 w-20" style={{ color: '#7491c4' }}>{formatTime(log.timestamp)}</span>
+                      <span className={`flex-shrink-0 ${dateFilter === 'all' ? 'w-36' : 'w-20'}`} style={{ color: '#7491c4' }}>{formatTime(log.timestamp, dateFilter === 'all')}</span>
                       {/* Category badge */}
                       <span
                         className="flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide"

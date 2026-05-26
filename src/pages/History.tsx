@@ -69,8 +69,8 @@ export default function History() {
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
       return (
-        item.title.toLowerCase().includes(q) ||
-        item.channel.toLowerCase().includes(q) ||
+        (item.title || '').toLowerCase().includes(q) ||
+        (item.channel || '').toLowerCase().includes(q) ||
         (item.error || '').toLowerCase().includes(q)
       )
     }
@@ -247,16 +247,16 @@ export default function History() {
                         {/* Info */}
                         <div className="flex-1 min-w-0">
                           <div className="text-xs font-semibold text-white break-words leading-relaxed">
-                            {item.title}
+                            {item.title || '(untitled)'}
                           </div>
                           <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                            <span className="text-[10px] font-medium" style={{ color: '#9db1d5' }}>{item.channel}</span>
+                            <span className="text-[10px] font-medium" style={{ color: '#9db1d5' }}>{item.channel || ''}</span>
                             <span className="text-[10px]" style={{ color: '#4f73b3' }}>•</span>
                             <span className="text-[10px] font-semibold" style={{
                               color: item.privacy === 'unlisted' ? '#C9A961' :
                                      item.privacy === 'private'  ? '#fb7185' :
                                      '#4ade80'
-                            }}>{item.privacy}</span>
+                            }}>{item.privacy || 'public'}</span>
                             {isFailed && (
                               <>
                                 <span className="text-[10px]" style={{ color: '#4f73b3' }}>•</span>
