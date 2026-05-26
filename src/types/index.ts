@@ -75,6 +75,15 @@ export interface AuthStatus {
   email?: string
 }
 
+export interface DuplicateVideoEntry {
+  videoId: string
+  title: string
+  channelId: string
+  channelTitle: string
+  publishedAt: string
+  thumbnailUrl: string
+}
+
 // Extend Window for Electron API
 declare global {
   interface Window {
@@ -137,6 +146,12 @@ declare global {
         reset: () => Promise<{ success: boolean }>
         onUpdate: (callback: (data: { usedUnits: number; resetDate: string; dailyLimit: number }) => void) => void
         removeListeners: () => void
+      }
+      duplicates: {
+        scan: (opts?: { channelIds?: string[] }) => Promise<{ success: boolean; duplicates?: Record<string, DuplicateVideoEntry[]>; totalScanned?: number; error?: string }>
+        deleteVideos: (videoIds: string[]) => Promise<{ success: boolean; results?: { videoId: string; success: boolean; error?: string }[]; error?: string }>
+        fixDisclosure: (videoIds: string[]) => Promise<{ success: boolean; results?: { videoId: string; success: boolean; error?: string }[]; error?: string }>
+        scanMissingDisclosure: (opts?: { channelIds?: string[] }) => Promise<{ success: boolean; videos?: DuplicateVideoEntry[]; totalScanned?: number; error?: string }>
       }
       updater: {
         check: () => Promise<any>

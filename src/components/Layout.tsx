@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Upload, History, Settings, LogOut,
   Video, ChevronRight, Wifi, Terminal,
-  Download, RefreshCw, Sparkles, X, ArrowDownToLine, Gauge, Shield
+  Download, RefreshCw, Sparkles, X, ArrowDownToLine, Gauge, Shield, Copy
 } from 'lucide-react'
 import { useApp } from '../App'
 
@@ -13,11 +13,12 @@ interface LayoutProps {
 }
 
 const navItems = [
-  { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { path: '/upload',    icon: Upload,          label: 'Upload Queue' },
-  { path: '/history',  icon: History,          label: 'Upload History' },
-  { path: '/logs',     icon: Terminal,         label: 'Activity Logs' },
-  { path: '/settings', icon: Settings,         label: 'Settings' },
+  { path: '/dashboard',   icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/upload',      icon: Upload,          label: 'Upload Queue' },
+  { path: '/history',     icon: History,         label: 'Upload History' },
+  { path: '/duplicates',  icon: Copy,            label: 'Duplicate Manager' },
+  { path: '/logs',        icon: Terminal,        label: 'Activity Logs' },
+  { path: '/settings',    icon: Settings,        label: 'Settings' },
 ]
 
 const quotaPct   = (used: number, limit: number) => Math.min(100, Math.round((used / limit) * 100))

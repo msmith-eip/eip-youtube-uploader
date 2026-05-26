@@ -132,6 +132,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
 
+  // Duplicate Manager
+  duplicates: {
+    scan: (opts?: { channelIds?: string[] }) => ipcRenderer.invoke('duplicates:scan', opts || {}),
+    deleteVideos: (videoIds: string[]) => ipcRenderer.invoke('duplicates:delete-videos', videoIds),
+    fixDisclosure: (videoIds: string[]) => ipcRenderer.invoke('duplicates:fix-disclosure', videoIds),
+    scanMissingDisclosure: (opts?: { channelIds?: string[] }) => ipcRenderer.invoke('duplicates:scan-missing-disclosure', opts || {}),
+  },
+
   // Auto Updater
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),

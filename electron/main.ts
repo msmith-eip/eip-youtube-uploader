@@ -105,6 +105,7 @@ export const QUOTA_COSTS = {
   VIDEOS_INSERT: 100,
   VIDEOS_LIST: 1,
   VIDEOS_UPDATE: 50,
+  VIDEOS_DELETE: 50,
   THUMBNAILS_SET: 50,
   CAPTIONS_INSERT: 400,
   PLAYLIST_ITEMS_INSERT: 50,
@@ -372,11 +373,15 @@ async function runMidnightQueue() {
           snippet: {
             title: job.title || require('path').basename(resolvedPath, require('path').extname(resolvedPath)),
             description: job.description || '',
-            categoryId: job.category || (store.get('settings') as any)?.defaultCategory || '22',
-            tags: job.tags || [],
+            categoryId: job.categoryId || job.category || (store.get('settings') as any)?.defaultCategory || '22',
+            tags: job.tags ? (Array.isArray(job.tags) ? job.tags : job.tags.split(',').map((t: string) => t.trim()).filter(Boolean)) : [],
+            defaultLanguage: job.language || 'en',
+            defaultAudioLanguage: job.language || 'en',
           },
           status: {
             privacyStatus: job.privacy || (store.get('settings') as any)?.defaultPrivacy || 'unlisted',
+            selfDeclaredMadeForKids: job.selfDeclaredMadeForKids ?? false,
+            containsSyntheticMedia: job.containsSyntheticMedia ?? true,
           },
         },
         media: { body: fileStream },
@@ -396,6 +401,9 @@ async function runMidnightQueue() {
       liveJobStates[i] = { status: 'complete', progress: 100, videoId, youtubeUrl }
       mainWindow?.webContents.send('upload:job-complete', { index: i, jobId: job.id, videoId, youtubeUrl, uploadedAt: ts })
       addLog('info', 'Upload', `Auto-start upload complete: ${job.fileName || job.filePath} -> ${youtubeUrl}`)
+      // ── Persist updated job status so the queue isn't re-run tomorrow ──────────
+      jobs[i] = { ...jobs[i], status: 'complete', videoId, youtubeUrl, uploadedAt: ts }
+      store.set('pendingQueue', { ...pending, jobs })
       history.unshift({
         id: videoId,
         title: job.title || job.fileName || '',
@@ -423,6 +431,9 @@ async function runMidnightQueue() {
       liveJobStates[i] = { status: 'error', error: errMsg }
       mainWindow?.webContents.send('upload:job-error', { index: i, jobId: job.id, error: errMsg })
       addLog('error', 'Upload', `Auto-start upload failed: ${job.fileName || job.filePath} — ${errMsg}`)
+      // ── Persist error status so we know which jobs failed ────────────────────
+      jobs[i] = { ...jobs[i], status: 'error', error: errMsg }
+      store.set('pendingQueue', { ...pending, jobs })
       history.unshift({
         id: `failed-${Date.now()}-${i}`,
         title: job.title || job.fileName || '',
@@ -442,6 +453,15 @@ async function runMidnightQueue() {
   }
 
   isUploading = false
+  // ── If all jobs are complete or skipped, clear the pending queue so it doesn't re-run ──
+  const allDone = jobs.every((j: any) => j.status === 'complete' || j.status === 'skipped')
+  if (allDone) {
+    store.delete('pendingQueue')
+    addLog('info', 'App', 'Auto-start: all jobs complete — pending queue cleared')
+  } else {
+    // Save final state so next run only retries failed jobs
+    store.set('pendingQueue', { ...pending, jobs })
+  }
   mainWindow?.webContents.send('upload:all-complete', { total: uploadQueue.length, cancelled: cancelUpload })
   addLog('info', 'App', 'Auto-start: queue complete')
 }
@@ -1601,4 +1621,243 @@ ipcMain.handle('quota:reset', async () => {
   store.set('quota', { usedUnits: 0, resetDate: today })
   mainWindow?.webContents.send('quota:update', { usedUnits: 0, resetDate: today, dailyLimit: QUOTA_DAILY_LIMIT })
   return { success: true }
+})
+
+// ─── IPC: Duplicate Manager ───────────────────────────────────────────────────
+
+/**
+ * Scan all authenticated channels for duplicate videos (same title).
+ * Returns a map of title → array of video objects, filtered to only groups
+ * that have 2+ entries.
+ */
+ipcMain.handle('duplicates:scan', async (_event, opts: { channelIds?: string[] } = {}) => {
+  try {
+    const tokens = store.get('tokens') as any
+    if (!tokens) return { success: false, error: 'Not authenticated' }
+    oauth2Client.setCredentials(tokens)
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
+
+    // Get all channels for this account
+    const channelsRes = await youtube.channels.list({ part: ['id', 'snippet'], mine: true, maxResults: 50 } as any)
+    addQuota(QUOTA_COSTS.CHANNELS_LIST, 'channels.list (duplicate scan)')
+    const channels = (channelsRes.data.items || []) as any[]
+
+    const allVideos: any[] = []
+
+    for (const ch of channels) {
+      if (opts.channelIds && opts.channelIds.length > 0 && !opts.channelIds.includes(ch.id)) continue
+      const channelTitle = ch.snippet?.title || ch.id
+
+      // Get uploads playlist
+      const chDetail = await youtube.channels.list({ part: ['contentDetails'], id: [ch.id] } as any)
+      addQuota(QUOTA_COSTS.CHANNELS_LIST, `channels.list contentDetails (${channelTitle})`)
+      const uploadsPlaylistId = chDetail.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads
+      if (!uploadsPlaylistId) continue
+
+      // Page through all videos in uploads playlist
+      let pageToken: string | undefined = undefined
+      let pageCount = 0
+      do {
+        const plRes: any = await youtube.playlistItems.list({
+          part: ['snippet', 'contentDetails'],
+          playlistId: uploadsPlaylistId,
+          maxResults: 50,
+          pageToken,
+        } as any)
+        addQuota(QUOTA_COSTS.PLAYLIST_ITEMS_LIST, `playlistItems.list (dup scan ${channelTitle} p${++pageCount})`)
+        const items = plRes.data.items || []
+        for (const item of items) {
+          allVideos.push({
+            videoId: item.contentDetails?.videoId || item.snippet?.resourceId?.videoId,
+            title: item.snippet?.title || '',
+            channelId: ch.id,
+            channelTitle,
+            publishedAt: item.contentDetails?.videoPublishedAt || item.snippet?.publishedAt || '',
+            thumbnailUrl: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || '',
+          })
+        }
+        pageToken = plRes.data.nextPageToken
+      } while (pageToken)
+    }
+
+    // Group by normalized title
+    const groups: Record<string, any[]> = {}
+    for (const v of allVideos) {
+      const key = (v.title || '').trim().toLowerCase()
+      if (!groups[key]) groups[key] = []
+      groups[key].push(v)
+    }
+
+    // Only return groups with duplicates (2+ videos with same title)
+    const duplicates: Record<string, any[]> = {}
+    for (const [key, vids] of Object.entries(groups)) {
+      if (vids.length >= 2) {
+        // Sort oldest first
+        vids.sort((a: any, b: any) => new Date(a.publishedAt).getTime() - new Date(b.publishedAt).getTime())
+        duplicates[key] = vids
+      }
+    }
+
+    addLog('info', 'Duplicates', `Scan complete — found ${Object.keys(duplicates).length} duplicate groups across ${allVideos.length} total videos`)
+    return { success: true, duplicates, totalScanned: allVideos.length }
+  } catch (err: any) {
+    const msg = err.message || String(err)
+    addLog('error', 'Duplicates', `Scan failed: ${msg}`)
+    return { success: false, error: msg }
+  }
+})
+
+/**
+ * Delete a list of YouTube videos by videoId.
+ * Returns per-video success/failure results.
+ */
+ipcMain.handle('duplicates:delete-videos', async (_event, videoIds: string[]) => {
+  try {
+    const tokens = store.get('tokens') as any
+    if (!tokens) return { success: false, error: 'Not authenticated' }
+    oauth2Client.setCredentials(tokens)
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
+
+    const results: { videoId: string; success: boolean; error?: string }[] = []
+    for (const videoId of videoIds) {
+      try {
+        await youtube.videos.delete({ id: videoId } as any)
+        addQuota(QUOTA_COSTS.VIDEOS_DELETE, `videos.delete (${videoId})`)
+        addLog('info', 'Duplicates', `Deleted video: ${videoId}`)
+        results.push({ videoId, success: true })
+      } catch (err: any) {
+        const msg = err.message || String(err)
+        addLog('error', 'Duplicates', `Failed to delete ${videoId}: ${msg}`)
+        results.push({ videoId, success: false, error: msg })
+      }
+      // Small delay between deletes to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 300))
+    }
+    return { success: true, results }
+  } catch (err: any) {
+    const msg = err.message || String(err)
+    addLog('error', 'Duplicates', `Delete batch failed: ${msg}`)
+    return { success: false, error: msg }
+  }
+})
+
+/**
+ * Fix the "Altered / Synthetic Content" disclosure on a list of videos
+ * by running videos.update to set containsSyntheticMedia: true.
+ */
+ipcMain.handle('duplicates:fix-disclosure', async (_event, videoIds: string[]) => {
+  try {
+    const tokens = store.get('tokens') as any
+    if (!tokens) return { success: false, error: 'Not authenticated' }
+    oauth2Client.setCredentials(tokens)
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
+
+    const results: { videoId: string; success: boolean; error?: string }[] = []
+    for (const videoId of videoIds) {
+      try {
+        await youtube.videos.update({
+          part: ['status'],
+          requestBody: {
+            id: videoId,
+            status: {
+              containsSyntheticMedia: true,
+            },
+          },
+        } as any)
+        addQuota(QUOTA_COSTS.VIDEOS_UPDATE, `videos.update fix-disclosure (${videoId})`)
+        addLog('info', 'Duplicates', `Fixed disclosure on video: ${videoId}`)
+        results.push({ videoId, success: true })
+      } catch (err: any) {
+        const msg = err.message || String(err)
+        addLog('error', 'Duplicates', `Failed to fix disclosure on ${videoId}: ${msg}`)
+        results.push({ videoId, success: false, error: msg })
+      }
+      await new Promise(resolve => setTimeout(resolve, 300))
+    }
+    return { success: true, results }
+  } catch (err: any) {
+    const msg = err.message || String(err)
+    addLog('error', 'Duplicates', `Fix-disclosure batch failed: ${msg}`)
+    return { success: false, error: msg }
+  }
+})
+
+/**
+ * Scan all channel videos and return those missing containsSyntheticMedia disclosure.
+ * Used by the "Fix Disclosure" bulk action to identify affected videos.
+ */
+ipcMain.handle('duplicates:scan-missing-disclosure', async (_event, opts: { channelIds?: string[] } = {}) => {
+  try {
+    const tokens = store.get('tokens') as any
+    if (!tokens) return { success: false, error: 'Not authenticated' }
+    oauth2Client.setCredentials(tokens)
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
+
+    const channelsRes = await youtube.channels.list({ part: ['id', 'snippet'], mine: true, maxResults: 50 } as any)
+    addQuota(QUOTA_COSTS.CHANNELS_LIST, 'channels.list (disclosure scan)')
+    const channels = (channelsRes.data.items || []) as any[]
+
+    const allVideoIds: string[] = []
+    const videoMeta: Record<string, any> = {}
+
+    for (const ch of channels) {
+      if (opts.channelIds && opts.channelIds.length > 0 && !opts.channelIds.includes(ch.id)) continue
+      const channelTitle = ch.snippet?.title || ch.id
+
+      const chDetail = await youtube.channels.list({ part: ['contentDetails'], id: [ch.id] } as any)
+      addQuota(QUOTA_COSTS.CHANNELS_LIST, `channels.list contentDetails (${channelTitle})`)
+      const uploadsPlaylistId = chDetail.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads
+      if (!uploadsPlaylistId) continue
+
+      let pageToken: string | undefined = undefined
+      let pageCount = 0
+      do {
+        const plRes: any = await youtube.playlistItems.list({
+          part: ['snippet', 'contentDetails'],
+          playlistId: uploadsPlaylistId,
+          maxResults: 50,
+          pageToken,
+        } as any)
+        addQuota(QUOTA_COSTS.PLAYLIST_ITEMS_LIST, `playlistItems.list (disclosure scan ${channelTitle} p${++pageCount})`)
+        for (const item of (plRes.data.items || [])) {
+          const vid = item.contentDetails?.videoId || item.snippet?.resourceId?.videoId
+          if (vid) {
+            allVideoIds.push(vid)
+            videoMeta[vid] = {
+              title: item.snippet?.title || '',
+              channelId: ch.id,
+              channelTitle,
+              publishedAt: item.contentDetails?.videoPublishedAt || item.snippet?.publishedAt || '',
+              thumbnailUrl: item.snippet?.thumbnails?.medium?.url || '',
+            }
+          }
+        }
+        pageToken = plRes.data.nextPageToken
+      } while (pageToken)
+    }
+
+    // Fetch status for all videos in batches of 50 to check containsSyntheticMedia
+    const missingDisclosure: any[] = []
+    for (let i = 0; i < allVideoIds.length; i += 50) {
+      const batch = allVideoIds.slice(i, i + 50)
+      const vRes = await youtube.videos.list({ part: ['status'], id: batch } as any)
+      addQuota(QUOTA_COSTS.VIDEOS_LIST, `videos.list status batch ${Math.floor(i / 50) + 1}`)
+      for (const v of (vRes.data.items || [])) {
+        const status = v.status as any
+        if (!status?.containsSyntheticMedia) {
+          missingDisclosure.push({
+            videoId: v.id,
+            ...videoMeta[v.id!],
+          })
+        }
+      }
+    }
+
+    addLog('info', 'Duplicates', `Disclosure scan complete — ${missingDisclosure.length} videos missing disclosure out of ${allVideoIds.length} total`)
+    return { success: true, videos: missingDisclosure, totalScanned: allVideoIds.length }
+  } catch (err: any) {
+    const msg = err.message || String(err)
+    addLog('error', 'Duplicates', `Disclosure scan failed: ${msg}`)
+    return { success: false, error: msg }
+  }
 })
