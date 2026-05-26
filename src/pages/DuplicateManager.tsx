@@ -1,5 +1,8 @@
-import React, { useState, useCallback, useMemo } from 'react'
-import { Search, Trash2, ShieldCheck, RefreshCw, CheckSquare, Square, ChevronDown, ChevronRight, ExternalLink, AlertTriangle, Info } from 'lucide-react'
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import {
+  Search, Trash2, ShieldCheck, RefreshCw, CheckSquare, Square,
+  ChevronDown, ChevronRight, ExternalLink, AlertTriangle, Info, X
+} from 'lucide-react'
 import type { DuplicateVideoEntry } from '../types'
 
 type ScanMode = 'duplicates' | 'disclosure'
@@ -8,6 +11,32 @@ interface DupGroup {
   key: string
   title: string
   videos: DuplicateVideoEntry[]
+}
+
+interface ChannelCount {
+  title: string
+  total: number
+}
+
+interface ProgressState {
+  done: number
+  total: number
+  lastVideoId: string
+  lastSuccess: boolean
+}
+
+// ── sessionStorage persistence helpers ────────────────────────────────────────
+const SS_KEY = 'dupManagerState'
+
+function saveState(data: any) {
+  try { sessionStorage.setItem(SS_KEY, JSON.stringify(data)) } catch {}
+}
+
+function loadState(): any | null {
+  try {
+    const raw = sessionStorage.getItem(SS_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch { return null }
 }
 
 function formatDate(iso: string) {
@@ -23,37 +52,133 @@ function parseDateInput(val: string): Date | null {
   return isNaN(d.getTime()) ? null : d
 }
 
+// ── Styled confirmation modal ─────────────────────────────────────────────────
+interface ConfirmModalProps {
+  videoCount: number
+  channelCounts: Record<string, ChannelCount>
+  selectedIds: string[]
+  allVideosInGroups: DuplicateVideoEntry[]
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+function DeleteConfirmModal({ videoCount, channelCounts, selectedIds, allVideosInGroups, onConfirm, onCancel }: ConfirmModalProps) {
+  // Calculate how many videos will remain per channel after deletion
+  const selectedSet = new Set(selectedIds)
+  const channelSelectedCount: Record<string, number> = {}
+  for (const v of allVideosInGroups) {
+    if (selectedSet.has(v.videoId)) {
+      channelSelectedCount[v.channelId] = (channelSelectedCount[v.channelId] || 0) + 1
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }}>
+      <div className="rounded-xl p-6 w-full max-w-md mx-4 shadow-2xl" style={{ background: '#071847', border: '1px solid #1a3a8f' }}>
+        <div className="flex items-start gap-3 mb-4">
+          <div className="rounded-full p-2 flex-shrink-0" style={{ background: 'rgba(178,34,52,0.15)' }}>
+            <AlertTriangle size={20} style={{ color: '#fb7185' }} />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-white">Confirm Deletion</h3>
+            <p className="text-xs mt-1" style={{ color: '#9db1d5' }}>
+              This will permanently delete {videoCount} video{videoCount !== 1 ? 's' : ''} from YouTube. This cannot be undone.
+            </p>
+          </div>
+          <button onClick={onCancel} className="ml-auto flex-shrink-0 p-1 rounded hover:bg-white/10">
+            <X size={14} style={{ color: '#4f73b3' }} />
+          </button>
+        </div>
+
+        {/* Per-channel impact summary */}
+        <div className="rounded-lg p-3 mb-4" style={{ background: '#0a1f5c', border: '1px solid #0e2a6e' }}>
+          <div className="text-xs font-semibold text-white mb-2">Impact per channel</div>
+          {Object.entries(channelSelectedCount).map(([chId, delCount]) => {
+            const ch = channelCounts[chId]
+            const remaining = ch ? ch.total - delCount : null
+            return (
+              <div key={chId} className="flex items-center justify-between py-1 text-xs border-b last:border-0" style={{ borderColor: '#0e2a6e' }}>
+                <span style={{ color: '#9db1d5' }}>{ch?.title || chId}</span>
+                <span>
+                  <span style={{ color: '#fb7185' }}>−{delCount}</span>
+                  {remaining !== null && (
+                    <span style={{ color: '#4f73b3' }}> → {remaining.toLocaleString()} remaining</span>
+                  )}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+
+        <p className="text-xs mb-4" style={{ color: '#4f73b3' }}>
+          Only the extra copies are selected. The oldest copy of each video is preserved.
+        </p>
+
+        <div className="flex gap-2 justify-end">
+          <button onClick={onCancel} className="btn-secondary text-xs py-2 px-4">Cancel</button>
+          <button
+            onClick={onConfirm}
+            className="text-xs py-2 px-4 rounded-lg font-semibold text-white transition-all"
+            style={{ background: 'linear-gradient(135deg, #B22234, #e11d48)' }}
+          >
+            Delete {videoCount} Video{videoCount !== 1 ? 's' : ''}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
 export default function DuplicateManager() {
-  const [mode, setMode] = useState<ScanMode>('duplicates')
+  // Restore from sessionStorage on mount
+  const saved = loadState()
+
+  const [mode, setMode] = useState<ScanMode>(saved?.mode || 'duplicates')
+  const [scanComplete, setScanComplete] = useState<boolean>(saved?.scanComplete || false)
   const [scanning, setScanning] = useState(false)
   const [scanError, setScanError] = useState<string | null>(null)
-  const [scanComplete, setScanComplete] = useState(false)
-  const [totalScanned, setTotalScanned] = useState(0)
+  const [totalScanned, setTotalScanned] = useState<number>(saved?.totalScanned || 0)
+  const [channelCounts, setChannelCounts] = useState<Record<string, ChannelCount>>(saved?.channelCounts || {})
 
-  // Duplicates mode state
-  const [dupGroups, setDupGroups] = useState<DupGroup[]>([])
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  const [dupGroups, setDupGroups] = useState<DupGroup[]>(saved?.dupGroups || [])
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(saved?.expandedGroups || []))
+  const [disclosureVideos, setDisclosureVideos] = useState<DuplicateVideoEntry[]>(saved?.disclosureVideos || [])
 
-  // Disclosure mode state
-  const [disclosureVideos, setDisclosureVideos] = useState<DuplicateVideoEntry[]>([])
+  const [selected, setSelected] = useState<Set<string>>(new Set(saved?.selected || []))
+  const [dateFrom, setDateFrom] = useState<string>(saved?.dateFrom || '')
+  const [dateTo, setDateTo] = useState<string>(saved?.dateTo || '')
+  const [search, setSearch] = useState<string>(saved?.search || '')
 
-  // Shared selection state (videoId → true)
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-
-  // Date range filter
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-
-  // Search filter
-  const [search, setSearch] = useState('')
-
-  // Action state
+  const [showConfirm, setShowConfirm] = useState(false)
   const [actionRunning, setActionRunning] = useState(false)
-  const [actionResults, setActionResults] = useState<{ videoId: string; success: boolean; error?: string }[] | null>(null)
   const [actionType, setActionType] = useState<'delete' | 'disclosure' | null>(null)
+  const [progress, setProgress] = useState<ProgressState | null>(null)
+  const [actionResults, setActionResults] = useState<{ videoId: string; success: boolean; error?: string }[] | null>(
+    saved?.actionResults || null
+  )
+
+  // Persist state whenever it changes
+  useEffect(() => {
+    saveState({
+      mode, scanComplete, totalScanned, channelCounts,
+      dupGroups, expandedGroups: Array.from(expandedGroups),
+      disclosureVideos, selected: Array.from(selected),
+      dateFrom, dateTo, search, actionResults,
+    })
+  }, [mode, scanComplete, totalScanned, channelCounts, dupGroups, expandedGroups, disclosureVideos, selected, dateFrom, dateTo, search, actionResults])
+
+  // Subscribe to delete/fix-disclosure progress events
+  useEffect(() => {
+    const api = (window.electronAPI as any)?.duplicates
+    if (!api?.onDeleteProgress) return
+    api.onDeleteProgress((data: { done: number; total: number; videoId: string; success: boolean; error?: string }) => {
+      setProgress({ done: data.done, total: data.total, lastVideoId: data.videoId, lastSuccess: data.success })
+    })
+    return () => api.removeDeleteProgressListener?.()
+  }, [])
 
   // ── Filtering ──────────────────────────────────────────────────────────────
-
   const fromDate = parseDateInput(dateFrom)
   const toDate = parseDateInput(dateTo)
 
@@ -89,20 +214,24 @@ export default function DuplicateManager() {
     )
   }, [disclosureVideos, dateFrom, dateTo, search])
 
-  // All selectable video IDs in current view
+  // All selectable IDs in current filtered view
   const allSelectableIds = useMemo<string[]>(() => {
     if (mode === 'duplicates') {
-      // In duplicate mode, only the non-oldest copies are selectable by default
       return filteredGroups.flatMap(g => g.videos.slice(1).map(v => v.videoId))
     }
     return filteredDisclosure.map(v => v.videoId)
   }, [mode, filteredGroups, filteredDisclosure])
 
+  // All videos across all groups (for confirmation modal impact calc)
+  const allVideosInGroups = useMemo<DuplicateVideoEntry[]>(() => {
+    return dupGroups.flatMap(g => g.videos)
+  }, [dupGroups])
+
   const allSelected = allSelectableIds.length > 0 && allSelectableIds.every(id => selected.has(id))
   const someSelected = allSelectableIds.some(id => selected.has(id))
+  const selectedCount = allSelectableIds.filter(id => selected.has(id)).length
 
   // ── Selection helpers ──────────────────────────────────────────────────────
-
   function toggleVideo(videoId: string) {
     setSelected(prev => {
       const next = new Set(prev)
@@ -120,8 +249,7 @@ export default function DuplicateManager() {
     }
   }
 
-  function toggleGroup(key: string, videos: DuplicateVideoEntry[]) {
-    // Toggle all non-oldest in the group
+  function toggleGroup(videos: DuplicateVideoEntry[]) {
     const ids = videos.slice(1).map(v => v.videoId)
     const allGroupSelected = ids.every(id => selected.has(id))
     setSelected(prev => {
@@ -142,30 +270,31 @@ export default function DuplicateManager() {
   }
 
   // ── Scan ───────────────────────────────────────────────────────────────────
-
   const handleScan = useCallback(async () => {
     setScanning(true)
     setScanError(null)
     setScanComplete(false)
     setSelected(new Set())
     setActionResults(null)
+    setProgress(null)
     setDupGroups([])
     setDisclosureVideos([])
+    setChannelCounts({})
 
     try {
       if (mode === 'duplicates') {
         const res = await window.electronAPI.duplicates.scan()
         if (!res.success) throw new Error(res.error || 'Scan failed')
+        const counts = (res as any).channelVideoCounts || {}
+        setChannelCounts(counts)
         const groups: DupGroup[] = Object.entries(res.duplicates || {}).map(([key, vids]) => ({
           key,
           title: (vids[0]?.title) || key,
           videos: vids,
         }))
-        // Sort by most duplicates first
         groups.sort((a, b) => b.videos.length - a.videos.length)
         setDupGroups(groups)
         setTotalScanned(res.totalScanned || 0)
-        // Auto-expand groups with ≤ 5 videos
         const autoExpand = new Set(groups.filter(g => g.videos.length <= 5).map(g => g.key))
         setExpandedGroups(autoExpand)
       } else {
@@ -182,24 +311,35 @@ export default function DuplicateManager() {
     }
   }, [mode])
 
-  // ── Delete ─────────────────────────────────────────────────────────────────
-
-  const handleDelete = useCallback(async () => {
-    const ids = Array.from(selected)
+  // ── Delete (after confirmation) ────────────────────────────────────────────
+  const runDelete = useCallback(async () => {
+    const ids = Array.from(selected).filter(id => allSelectableIds.includes(id))
     if (ids.length === 0) return
-    if (!window.confirm(`Delete ${ids.length} video${ids.length !== 1 ? 's' : ''} from YouTube? This cannot be undone.`)) return
 
+    setShowConfirm(false)
     setActionRunning(true)
     setActionType('delete')
     setActionResults(null)
+    setProgress({ done: 0, total: ids.length, lastVideoId: '', lastSuccess: true })
 
     try {
       const res = await window.electronAPI.duplicates.deleteVideos(ids)
       if (!res.success) throw new Error(res.error || 'Delete failed')
       setActionResults(res.results || [])
 
-      // Remove successfully deleted videos from local state
       const deletedIds = new Set((res.results || []).filter(r => r.success).map(r => r.videoId))
+
+      // Update channel counts
+      setChannelCounts(prev => {
+        const next = { ...prev }
+        for (const v of allVideosInGroups) {
+          if (deletedIds.has(v.videoId) && next[v.channelId]) {
+            next[v.channelId] = { ...next[v.channelId], total: Math.max(0, next[v.channelId].total - 1) }
+          }
+        }
+        return next
+      })
+
       setDupGroups(prev =>
         prev
           .map(g => ({ ...g, videos: g.videos.filter(v => !deletedIds.has(v.videoId)) }))
@@ -215,25 +355,25 @@ export default function DuplicateManager() {
       setScanError(err.message || 'Delete failed')
     } finally {
       setActionRunning(false)
+      setProgress(null)
     }
-  }, [selected])
+  }, [selected, allSelectableIds, allVideosInGroups])
 
   // ── Fix Disclosure ─────────────────────────────────────────────────────────
-
   const handleFixDisclosure = useCallback(async () => {
-    const ids = Array.from(selected)
+    const ids = Array.from(selected).filter(id => allSelectableIds.includes(id))
     if (ids.length === 0) return
 
     setActionRunning(true)
     setActionType('disclosure')
     setActionResults(null)
+    setProgress({ done: 0, total: ids.length, lastVideoId: '', lastSuccess: true })
 
     try {
       const res = await window.electronAPI.duplicates.fixDisclosure(ids)
       if (!res.success) throw new Error(res.error || 'Fix disclosure failed')
       setActionResults(res.results || [])
 
-      // Remove successfully fixed videos from disclosure list
       const fixedIds = new Set((res.results || []).filter(r => r.success).map(r => r.videoId))
       setDisclosureVideos(prev => prev.filter(v => !fixedIds.has(v.videoId)))
       setSelected(prev => {
@@ -245,15 +385,38 @@ export default function DuplicateManager() {
       setScanError(err.message || 'Fix disclosure failed')
     } finally {
       setActionRunning(false)
+      setProgress(null)
     }
-  }, [selected])
+  }, [selected, allSelectableIds])
+
+  // ── Mode switch ────────────────────────────────────────────────────────────
+  function switchMode(m: ScanMode) {
+    setMode(m)
+    setScanComplete(false)
+    setDupGroups([])
+    setDisclosureVideos([])
+    setSelected(new Set())
+    setActionResults(null)
+    setProgress(null)
+    setChannelCounts({})
+  }
 
   // ── Render ─────────────────────────────────────────────────────────────────
-
-  const selectedCount = Array.from(selected).filter(id => allSelectableIds.includes(id)).length
-
   return (
     <div className="flex flex-col h-full" style={{ background: '#061540' }}>
+
+      {/* Confirmation modal */}
+      {showConfirm && (
+        <DeleteConfirmModal
+          videoCount={selectedCount}
+          channelCounts={channelCounts}
+          selectedIds={Array.from(selected)}
+          allVideosInGroups={allVideosInGroups}
+          onConfirm={runDelete}
+          onCancel={() => setShowConfirm(false)}
+        />
+      )}
+
       {/* Header */}
       <div className="flex-shrink-0 px-6 py-4 border-b" style={{ borderColor: '#0e2a6e' }}>
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -270,18 +433,18 @@ export default function DuplicateManager() {
           )}
         </div>
 
-        {/* Mode tabs */}
+        {/* Mode tabs + scan button */}
         <div className="flex items-center gap-2 mb-3 flex-wrap">
           <div className="flex items-center gap-1 rounded-lg p-1" style={{ background: '#0a1f5c' }}>
             <button
-              onClick={() => { setMode('duplicates'); setScanComplete(false); setDupGroups([]); setDisclosureVideos([]); setSelected(new Set()); setActionResults(null) }}
+              onClick={() => switchMode('duplicates')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none ${mode === 'duplicates' ? 'text-white' : 'text-navy-300 hover:text-white'}`}
               style={mode === 'duplicates' ? { background: '#1a3a8f' } : {}}
             >
               Duplicate Videos
             </button>
             <button
-              onClick={() => { setMode('disclosure'); setScanComplete(false); setDupGroups([]); setDisclosureVideos([]); setSelected(new Set()); setActionResults(null) }}
+              onClick={() => switchMode('disclosure')}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer select-none ${mode === 'disclosure' ? 'text-white' : 'text-navy-300 hover:text-white'}`}
               style={mode === 'disclosure' ? { background: '#1a3a8f' } : {}}
             >
@@ -291,18 +454,29 @@ export default function DuplicateManager() {
 
           <button
             onClick={handleScan}
-            disabled={scanning}
+            disabled={scanning || actionRunning}
             className="btn-primary text-xs py-1.5 flex items-center gap-1.5"
           >
             <RefreshCw size={12} className={scanning ? 'animate-spin' : ''} />
-            {scanning ? 'Scanning…' : 'Scan Channels'}
+            {scanning ? 'Scanning…' : scanComplete ? 'Re-Scan' : 'Scan Channels'}
           </button>
         </div>
 
-        {/* Filters row */}
+        {/* Channel video counts */}
+        {scanComplete && Object.keys(channelCounts).length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {Object.entries(channelCounts).map(([chId, ch]) => (
+              <div key={chId} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs" style={{ background: '#0a1f5c', border: '1px solid #0e2a6e' }}>
+                <span style={{ color: '#9db1d5' }}>{ch.title}</span>
+                <span className="font-semibold" style={{ color: '#60a5fa' }}>{ch.total.toLocaleString()} videos</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Filters */}
         {scanComplete && (
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Search */}
             <div className="relative">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: '#4f73b3' }} />
               <input
@@ -313,31 +487,16 @@ export default function DuplicateManager() {
                 className="input pl-8 py-1.5 text-xs w-52"
               />
             </div>
-            {/* Date from */}
             <div className="flex items-center gap-1">
               <span className="text-xs" style={{ color: '#4f73b3' }}>From</span>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={e => setDateFrom(e.target.value)}
-                className="input py-1.5 text-xs w-36"
-              />
+              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="input py-1.5 text-xs w-36" />
             </div>
-            {/* Date to */}
             <div className="flex items-center gap-1">
               <span className="text-xs" style={{ color: '#4f73b3' }}>To</span>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={e => setDateTo(e.target.value)}
-                className="input py-1.5 text-xs w-36"
-              />
+              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="input py-1.5 text-xs w-36" />
             </div>
             {(dateFrom || dateTo) && (
-              <button
-                onClick={() => { setDateFrom(''); setDateTo('') }}
-                className="text-xs px-2 py-1 rounded" style={{ color: '#4f73b3' }}
-              >
+              <button onClick={() => { setDateFrom(''); setDateTo('') }} className="text-xs px-2 py-1 rounded" style={{ color: '#4f73b3' }}>
                 Clear dates
               </button>
             )}
@@ -345,7 +504,7 @@ export default function DuplicateManager() {
         )}
       </div>
 
-      {/* Toolbar (select all + actions) */}
+      {/* Toolbar */}
       {scanComplete && (
         <div className="flex-shrink-0 px-6 py-2 flex items-center gap-3 border-b" style={{ borderColor: '#0e2a6e', background: '#071847' }}>
           <button onClick={toggleSelectAll} className="flex items-center gap-1.5 text-xs" style={{ color: '#4f73b3' }}>
@@ -365,25 +524,38 @@ export default function DuplicateManager() {
 
           <div className="flex-1" />
 
-          {selectedCount > 0 && mode === 'duplicates' && (
+          {/* Progress bar during action */}
+          {actionRunning && progress && (
+            <div className="flex items-center gap-2">
+              <div className="w-32 h-1.5 rounded-full overflow-hidden" style={{ background: '#0a1f5c' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-300"
+                  style={{ width: `${progress.total > 0 ? (progress.done / progress.total) * 100 : 0}%`, background: actionType === 'delete' ? '#B22234' : '#1a4480' }}
+                />
+              </div>
+              <span className="text-xs tabular-nums" style={{ color: '#9db1d5' }}>
+                {actionType === 'delete' ? 'Deleting' : 'Fixing'} {progress.done} / {progress.total}
+              </span>
+            </div>
+          )}
+
+          {selectedCount > 0 && mode === 'duplicates' && !actionRunning && (
             <button
-              onClick={handleDelete}
-              disabled={actionRunning}
+              onClick={() => setShowConfirm(true)}
               className="btn-danger text-xs py-1.5 flex items-center gap-1.5"
             >
               <Trash2 size={12} />
-              {actionRunning && actionType === 'delete' ? 'Deleting…' : `Delete ${selectedCount} Video${selectedCount !== 1 ? 's' : ''}`}
+              Delete {selectedCount} Video{selectedCount !== 1 ? 's' : ''}
             </button>
           )}
 
-          {selectedCount > 0 && mode === 'disclosure' && (
+          {selectedCount > 0 && mode === 'disclosure' && !actionRunning && (
             <button
               onClick={handleFixDisclosure}
-              disabled={actionRunning}
               className="btn-primary text-xs py-1.5 flex items-center gap-1.5"
             >
               <ShieldCheck size={12} />
-              {actionRunning && actionType === 'disclosure' ? 'Fixing…' : `Fix Disclosure on ${selectedCount} Video${selectedCount !== 1 ? 's' : ''}`}
+              Fix Disclosure on {selectedCount} Video{selectedCount !== 1 ? 's' : ''}
             </button>
           )}
         </div>
@@ -400,11 +572,11 @@ export default function DuplicateManager() {
           </div>
         )}
 
-        {/* Action results */}
-        {actionResults && (
+        {/* Action results summary */}
+        {actionResults && !actionRunning && (
           <div className="mb-4 p-3 rounded-lg text-xs" style={{ background: '#071847', border: '1px solid #0e2a6e' }}>
             <div className="font-semibold text-white mb-1">
-              {actionType === 'delete' ? 'Delete' : 'Fix Disclosure'} Results
+              {actionType === 'delete' ? 'Delete' : 'Fix Disclosure'} Complete
             </div>
             <div className="flex gap-4">
               <span style={{ color: '#4ade80' }}>✓ {actionResults.filter(r => r.success).length} succeeded</span>
@@ -412,7 +584,7 @@ export default function DuplicateManager() {
                 <span style={{ color: '#fb7185' }}>✗ {actionResults.filter(r => !r.success).length} failed</span>
               )}
             </div>
-            {actionResults.filter(r => !r.success).map(r => (
+            {actionResults.filter(r => !r.success).slice(0, 5).map(r => (
               <div key={r.videoId} className="mt-1" style={{ color: '#fb7185' }}>
                 {r.videoId}: {r.error}
               </div>
@@ -449,7 +621,7 @@ export default function DuplicateManager() {
           </div>
         )}
 
-        {/* Duplicates mode results */}
+        {/* Duplicates results */}
         {scanComplete && mode === 'duplicates' && (
           <>
             {filteredGroups.length === 0 ? (
@@ -464,19 +636,13 @@ export default function DuplicateManager() {
               <div className="space-y-2">
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-xs font-semibold" style={{ color: '#fb7185' }}>
-                    {filteredGroups.length} duplicate group{filteredGroups.length !== 1 ? 's' : ''} found
+                    {filteredGroups.length} duplicate group{filteredGroups.length !== 1 ? 's' : ''}
                   </span>
                   <span className="text-xs" style={{ color: '#4f73b3' }}>
                     ({filteredGroups.reduce((s, g) => s + g.videos.length - 1, 0)} extra copies)
                   </span>
-                  <button
-                    onClick={() => setExpandedGroups(new Set(filteredGroups.map(g => g.key)))}
-                    className="text-xs ml-2" style={{ color: '#4f73b3' }}
-                  >Expand all</button>
-                  <button
-                    onClick={() => setExpandedGroups(new Set())}
-                    className="text-xs" style={{ color: '#4f73b3' }}
-                  >Collapse all</button>
+                  <button onClick={() => setExpandedGroups(new Set(filteredGroups.map(g => g.key)))} className="text-xs ml-2" style={{ color: '#4f73b3' }}>Expand all</button>
+                  <button onClick={() => setExpandedGroups(new Set())} className="text-xs" style={{ color: '#4f73b3' }}>Collapse all</button>
                 </div>
 
                 {filteredGroups.map(group => {
@@ -487,15 +653,14 @@ export default function DuplicateManager() {
 
                   return (
                     <div key={group.key} className="rounded-lg overflow-hidden" style={{ border: '1px solid #0e2a6e', background: '#071847' }}>
-                      {/* Group header */}
                       <div
-                        className="flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-opacity-80"
+                        className="flex items-center gap-2 px-4 py-3 cursor-pointer"
                         style={{ background: '#0a1f5c' }}
                         onClick={() => toggleExpand(group.key)}
                       >
                         <button
                           className="flex-shrink-0"
-                          onClick={e => { e.stopPropagation(); toggleGroup(group.key, group.videos) }}
+                          onClick={e => { e.stopPropagation(); toggleGroup(group.videos) }}
                         >
                           {groupAllSelected
                             ? <CheckSquare size={14} style={{ color: '#60a5fa' }} />
@@ -505,15 +670,10 @@ export default function DuplicateManager() {
                         </button>
                         {isExpanded ? <ChevronDown size={14} style={{ color: '#4f73b3' }} /> : <ChevronRight size={14} style={{ color: '#4f73b3' }} />}
                         <span className="text-xs font-semibold text-white flex-1 truncate">{group.title}</span>
-                        <span className="text-xs flex-shrink-0" style={{ color: '#fb7185' }}>
-                          {group.videos.length} copies
-                        </span>
-                        <span className="text-xs flex-shrink-0" style={{ color: '#4f73b3' }}>
-                          {group.videos[0]?.channelTitle}
-                        </span>
+                        <span className="text-xs flex-shrink-0" style={{ color: '#fb7185' }}>{group.videos.length} copies</span>
+                        <span className="text-xs flex-shrink-0" style={{ color: '#4f73b3' }}>{group.videos[0]?.channelTitle}</span>
                       </div>
 
-                      {/* Group videos */}
                       {isExpanded && (
                         <div className="divide-y" style={{ borderColor: '#0e2a6e' }}>
                           {group.videos.map((video, idx) => {
@@ -525,7 +685,6 @@ export default function DuplicateManager() {
                                 className="flex items-center gap-3 px-4 py-2.5"
                                 style={{ background: isSelected ? '#0d2660' : undefined }}
                               >
-                                {/* Checkbox — oldest is not selectable */}
                                 <button
                                   className="flex-shrink-0"
                                   onClick={() => !isOldest && toggleVideo(video.videoId)}
@@ -537,12 +696,10 @@ export default function DuplicateManager() {
                                     : <Square size={14} style={{ color: '#4f73b3' }} />}
                                 </button>
 
-                                {/* Thumbnail */}
                                 {video.thumbnailUrl
                                   ? <img src={video.thumbnailUrl} alt="" className="w-12 h-9 object-cover rounded flex-shrink-0" />
                                   : <div className="w-12 h-9 rounded flex-shrink-0" style={{ background: '#0e2a6e' }} />}
 
-                                {/* Info */}
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1.5">
                                     <span className="text-xs text-white truncate">{video.title}</span>
@@ -559,7 +716,6 @@ export default function DuplicateManager() {
                                   </div>
                                 </div>
 
-                                {/* YouTube link */}
                                 <a
                                   href={`https://www.youtube.com/watch?v=${video.videoId}`}
                                   target="_blank"
@@ -583,7 +739,7 @@ export default function DuplicateManager() {
           </>
         )}
 
-        {/* Disclosure mode results */}
+        {/* Disclosure results */}
         {scanComplete && mode === 'disclosure' && (
           <>
             {filteredDisclosure.length === 0 ? (

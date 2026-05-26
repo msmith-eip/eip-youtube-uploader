@@ -1638,15 +1638,19 @@ ipcMain.handle('duplicates:scan', async (_event, opts: { channelIds?: string[] }
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
 
     // Get all channels for this account
-    const channelsRes = await youtube.channels.list({ part: ['id', 'snippet'], mine: true, maxResults: 50 } as any)
+    const channelsRes = await youtube.channels.list({ part: ['id', 'snippet', 'statistics'], mine: true, maxResults: 50 } as any)
     addQuota(QUOTA_COSTS.CHANNELS_LIST, 'channels.list (duplicate scan)')
     const channels = (channelsRes.data.items || []) as any[]
 
     const allVideos: any[] = []
+    // channelId → total video count from statistics
+    const channelVideoCounts: Record<string, { title: string; total: number }> = {}
 
     for (const ch of channels) {
       if (opts.channelIds && opts.channelIds.length > 0 && !opts.channelIds.includes(ch.id)) continue
       const channelTitle = ch.snippet?.title || ch.id
+      const totalVideoCount = parseInt(ch.statistics?.videoCount || '0', 10)
+      channelVideoCounts[ch.id] = { title: channelTitle, total: totalVideoCount }
 
       // Get uploads playlist
       const chDetail = await youtube.channels.list({ part: ['contentDetails'], id: [ch.id] } as any)
@@ -1699,7 +1703,7 @@ ipcMain.handle('duplicates:scan', async (_event, opts: { channelIds?: string[] }
     }
 
     addLog('info', 'Duplicates', `Scan complete — found ${Object.keys(duplicates).length} duplicate groups across ${allVideos.length} total videos`)
-    return { success: true, duplicates, totalScanned: allVideos.length }
+    return { success: true, duplicates, totalScanned: allVideos.length, channelVideoCounts }
   } catch (err: any) {
     const msg = err.message || String(err)
     addLog('error', 'Duplicates', `Scan failed: ${msg}`)
@@ -1709,9 +1713,10 @@ ipcMain.handle('duplicates:scan', async (_event, opts: { channelIds?: string[] }
 
 /**
  * Delete a list of YouTube videos by videoId.
- * Returns per-video success/failure results.
+ * Streams per-video progress via 'duplicates:delete-progress' event.
+ * Each request has a 15-second timeout to prevent indefinite hangs.
  */
-ipcMain.handle('duplicates:delete-videos', async (_event, videoIds: string[]) => {
+ipcMain.handle('duplicates:delete-videos', async (event, videoIds: string[]) => {
   try {
     const tokens = store.get('tokens') as any
     if (!tokens) return { success: false, error: 'Not authenticated' }
@@ -1719,20 +1724,43 @@ ipcMain.handle('duplicates:delete-videos', async (_event, videoIds: string[]) =>
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
 
     const results: { videoId: string; success: boolean; error?: string }[] = []
-    for (const videoId of videoIds) {
+    const total = videoIds.length
+
+    for (let i = 0; i < videoIds.length; i++) {
+      const videoId = videoIds[i]
+      let success = false
+      let errMsg: string | undefined
+
       try {
-        await youtube.videos.delete({ id: videoId } as any)
+        // Wrap the API call with a 15-second timeout
+        await Promise.race([
+          youtube.videos.delete({ id: videoId } as any),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out after 15s')), 15000)),
+        ])
         addQuota(QUOTA_COSTS.VIDEOS_DELETE, `videos.delete (${videoId})`)
-        addLog('info', 'Duplicates', `Deleted video: ${videoId}`)
-        results.push({ videoId, success: true })
+        addLog('info', 'Duplicates', `Deleted video ${i + 1}/${total}: ${videoId}`)
+        success = true
       } catch (err: any) {
-        const msg = err.message || String(err)
-        addLog('error', 'Duplicates', `Failed to delete ${videoId}: ${msg}`)
-        results.push({ videoId, success: false, error: msg })
+        errMsg = err.message || String(err)
+        addLog('error', 'Duplicates', `Failed to delete ${videoId}: ${errMsg}`)
       }
+
+      results.push({ videoId, success, error: errMsg })
+
+      // Stream progress back to renderer
+      mainWindow?.webContents.send('duplicates:delete-progress', {
+        done: i + 1,
+        total,
+        videoId,
+        success,
+        error: errMsg,
+      })
+
       // Small delay between deletes to avoid rate limiting
-      await new Promise(resolve => setTimeout(resolve, 300))
+      await new Promise(resolve => setTimeout(resolve, 400))
     }
+
+    addLog('info', 'Duplicates', `Delete complete: ${results.filter(r => r.success).length}/${total} succeeded`)
     return { success: true, results }
   } catch (err: any) {
     const msg = err.message || String(err)
@@ -1744,6 +1772,7 @@ ipcMain.handle('duplicates:delete-videos', async (_event, videoIds: string[]) =>
 /**
  * Fix the "Altered / Synthetic Content" disclosure on a list of videos
  * by running videos.update to set containsSyntheticMedia: true.
+ * Streams per-video progress via 'duplicates:delete-progress' event.
  */
 ipcMain.handle('duplicates:fix-disclosure', async (_event, videoIds: string[]) => {
   try {
@@ -1753,27 +1782,43 @@ ipcMain.handle('duplicates:fix-disclosure', async (_event, videoIds: string[]) =
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
 
     const results: { videoId: string; success: boolean; error?: string }[] = []
-    for (const videoId of videoIds) {
+    const total = videoIds.length
+
+    for (let i = 0; i < videoIds.length; i++) {
+      const videoId = videoIds[i]
+      let success = false
+      let errMsg: string | undefined
+
       try {
-        await youtube.videos.update({
-          part: ['status'],
-          requestBody: {
-            id: videoId,
-            status: {
-              containsSyntheticMedia: true,
-            },
-          },
-        } as any)
+        await Promise.race([
+          youtube.videos.update({
+            part: ['status'],
+            requestBody: { id: videoId, status: { containsSyntheticMedia: true } },
+          } as any),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out after 15s')), 15000)),
+        ])
         addQuota(QUOTA_COSTS.VIDEOS_UPDATE, `videos.update fix-disclosure (${videoId})`)
-        addLog('info', 'Duplicates', `Fixed disclosure on video: ${videoId}`)
-        results.push({ videoId, success: true })
+        addLog('info', 'Duplicates', `Fixed disclosure ${i + 1}/${total}: ${videoId}`)
+        success = true
       } catch (err: any) {
-        const msg = err.message || String(err)
-        addLog('error', 'Duplicates', `Failed to fix disclosure on ${videoId}: ${msg}`)
-        results.push({ videoId, success: false, error: msg })
+        errMsg = err.message || String(err)
+        addLog('error', 'Duplicates', `Failed to fix disclosure on ${videoId}: ${errMsg}`)
       }
-      await new Promise(resolve => setTimeout(resolve, 300))
+
+      results.push({ videoId, success, error: errMsg })
+
+      mainWindow?.webContents.send('duplicates:delete-progress', {
+        done: i + 1,
+        total,
+        videoId,
+        success,
+        error: errMsg,
+      })
+
+      await new Promise(resolve => setTimeout(resolve, 400))
     }
+
+    addLog('info', 'Duplicates', `Fix-disclosure complete: ${results.filter(r => r.success).length}/${total} succeeded`)
     return { success: true, results }
   } catch (err: any) {
     const msg = err.message || String(err)

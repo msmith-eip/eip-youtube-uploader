@@ -138,6 +138,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     deleteVideos: (videoIds: string[]) => ipcRenderer.invoke('duplicates:delete-videos', videoIds),
     fixDisclosure: (videoIds: string[]) => ipcRenderer.invoke('duplicates:fix-disclosure', videoIds),
     scanMissingDisclosure: (opts?: { channelIds?: string[] }) => ipcRenderer.invoke('duplicates:scan-missing-disclosure', opts || {}),
+    onDeleteProgress: (callback: (data: any) => void) => {
+      ipcRenderer.on('duplicates:delete-progress', (_, data) => callback(data))
+    },
+    removeDeleteProgressListener: () => {
+      ipcRenderer.removeAllListeners('duplicates:delete-progress')
+    },
   },
 
   // Auto Updater
