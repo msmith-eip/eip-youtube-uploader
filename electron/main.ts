@@ -9,6 +9,7 @@ import { autoUpdater } from 'electron-updater'
 import { CLIENT_ID, CLIENT_SECRET } from './oauth.config'
 
 const isDev = process.env.NODE_ENV === 'development'
+const MAX_HISTORY = 10000
 
 // ─── OneDrive Placeholder Detection & Hydration ───────────────────────────────
 // FILE_ATTRIBUTE_OFFLINE = 0x1000 | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS = 0x400000
@@ -86,6 +87,8 @@ const store = new Store({
     },
     // Persisted queue for 3:05 AM auto-start: { jobs, excelPath, excelBase64 }
     pendingQueue: null as any,
+    // Running total of all successful uploads ever (survives history pruning)
+    totalUploadsAllTime: 0,
   },
 })
 
@@ -414,7 +417,7 @@ async function runMidnightQueue() {
         youtubeUrl,
         status: 'success',
       })
-      store.set('uploadHistory', history.slice(0, 1000))
+      store.set('uploadHistory', history.slice(0, MAX_HISTORY))
       consecutiveUploadLimitErrors = 0
     } catch (err: any) {
       const errMsg = err?.message || String(err)
@@ -445,7 +448,7 @@ async function runMidnightQueue() {
         status: 'failed',
         error: errMsg,
       })
-      store.set('uploadHistory', history.slice(0, 1000))
+      store.set('uploadHistory', history.slice(0, MAX_HISTORY))
     }
     if (i < uploadQueue.length - 1 && !cancelUpload) {
       await new Promise(resolve => setTimeout(resolve, delay))
@@ -682,15 +685,33 @@ ipcMain.handle('history:get', async () => {
 
 ipcMain.handle('history:clear', async () => {
   store.set('uploadHistory', [])
+  store.set('totalUploadsAllTime', 0)
   return { success: true }
+})
+
+ipcMain.handle('history:get-stats', async () => {
+  const history = (store.get('uploadHistory') as any[]) || []
+  const totalUploadsAllTime = (store.get('totalUploadsAllTime') as number) || history.length
+  // Per-channel today counts
+  const today = new Date().toDateString()
+  const todayByChannel: Record<string, number> = {}
+  for (const h of history) {
+    if (h.status === 'success' && h.uploadedAt && new Date(h.uploadedAt).toDateString() === today) {
+      const ch = h.channel || 'Unknown'
+      todayByChannel[ch] = (todayByChannel[ch] || 0) + 1
+    }
+  }
+  return { totalUploadsAllTime, todayByChannel }
 })
 
 // ─── IPC: Upload ──────────────────────────────────────────────────────────────
 ipcMain.handle('upload:start', async (event, payload: any) => {
-  // Accept either (jobs[]) for backward compat or ({ jobs, excelPath, excelBase64 })
+  // Accept either (jobs[]) for backward compat or ({ jobs, excelPath, excelBase64, perChannelLimit })
   const jobs: any[] = Array.isArray(payload) ? payload : (payload?.jobs || [])
   const incomingExcelPath: string | null = Array.isArray(payload) ? null : (payload?.excelPath || null)
   const incomingExcelBase64: string | null = Array.isArray(payload) ? null : (payload?.excelBase64 || null)
+  // Per-channel upload limit for this run (0 = unlimited)
+  const perChannelLimit: number = Array.isArray(payload) ? 0 : (payload?.perChannelLimit || 0)
 
   if (isUploading) return { success: false, error: 'Upload already in progress' }
 
@@ -702,6 +723,7 @@ ipcMain.handle('upload:start', async (event, payload: any) => {
   sessionDuplicateResolution = null  // reset session-wide duplicate choice for new queue run
   consecutiveUploadLimitErrors = 0   // reset upload limit error counter for new queue run
   jobUploadTimestamps = {}           // reset per-job timestamps for new queue run
+  const channelUploadCounts: Record<string, number> = {}  // per-channel upload count for this run
   // Store Excel session state in main process for reliable write-back
   if (incomingExcelPath) excelSessionPath = incomingExcelPath
   if (incomingExcelBase64) excelSessionBase64 = incomingExcelBase64
@@ -806,6 +828,22 @@ ipcMain.handle('upload:start', async (event, payload: any) => {
       }
     }
 
+    // ── Per-channel daily limit check ──────────────────────────────────────────────────────────
+    if (perChannelLimit > 0) {
+      const chKey = job.channelId || job.channelName || 'default'
+      const chCount = channelUploadCounts[chKey] || 0
+      if (chCount >= perChannelLimit) {
+        addLog('warn', 'Upload', `Per-channel limit of ${perChannelLimit} reached for channel ${job.channelName || job.channelId} — stopping queue`)
+        mainWindow?.webContents.send('upload:channel-limit-reached', {
+          channelId: job.channelId,
+          channelName: job.channelName,
+          limit: perChannelLimit,
+          uploaded: chCount,
+        })
+        break
+      }
+    }
+
     // Notify start
     liveJobStates[i] = { status: 'uploading', progress: 0 }
     mainWindow?.webContents.send('upload:job-start', { index: i, jobId: job.id, job })
@@ -885,9 +923,17 @@ ipcMain.handle('upload:start', async (event, payload: any) => {
         status: 'success',
       }
       history.unshift(historyEntry)
-      store.set('uploadHistory', history.slice(0, 1000))
+      store.set('uploadHistory', history.slice(0, MAX_HISTORY))
+      // Increment the all-time counter (survives history pruning)
+      const prevTotal = (store.get('totalUploadsAllTime') as number) || 0
+      store.set('totalUploadsAllTime', prevTotal + 1)
 
       consecutiveUploadLimitErrors = 0  // reset on success — limit errors must be consecutive to stop the queue
+      // Increment per-channel counter
+      const chKey = job.channelId || job.channelName || 'default'
+      channelUploadCounts[chKey] = (channelUploadCounts[chKey] || 0) + 1
+      // Emit updated channel counts to renderer
+      mainWindow?.webContents.send('upload:channel-counts-update', { channelUploadCounts })
       const completedAt = new Date().toISOString()
       jobUploadTimestamps[i] = completedAt
       liveJobStates[i] = { status: 'complete', progress: 100, videoId: videoId!, youtubeUrl: `https://www.youtube.com/watch?v=${videoId}` }
@@ -949,7 +995,7 @@ ipcMain.handle('upload:start', async (event, payload: any) => {
           error: errMsg,
         }
         history.unshift(failedEntry)
-        store.set('uploadHistory', history.slice(0, 1000))
+        store.set('uploadHistory', history.slice(0, MAX_HISTORY))
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
     }
@@ -1059,7 +1105,7 @@ ipcMain.handle('upload:retry-job', async (event, job: any) => {
       filePath: job.filePath,
       youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
     })
-    store.set('uploadHistory', history.slice(0, 1000))
+    store.set('uploadHistory', history.slice(0, MAX_HISTORY))
     mainWindow?.webContents.send('upload:job-complete', {
       index: job._queueIndex || 0,
       videoId,
@@ -1148,7 +1194,7 @@ ipcMain.handle('upload:force-upload-job', async (event, job: any) => {
       youtubeUrl: `https://www.youtube.com/watch?v=${videoId}`,
       status: 'success',
     })
-    store.set('uploadHistory', history.slice(0, 1000))
+    store.set('uploadHistory', history.slice(0, MAX_HISTORY))
     mainWindow?.webContents.send('upload:job-complete', {
       index: forceIndex,
       videoId,

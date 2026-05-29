@@ -118,9 +118,10 @@ declare global {
       history: {
         get: () => Promise<UploadHistory[]>
         clear: () => Promise<{ success: boolean }>
+        getStats?: () => Promise<{ totalUploadsAllTime: number; todayByChannel: Record<string, number> }>
       }
       upload: {
-        start: (payload: { jobs: UploadJob[]; excelPath?: string | null; excelBase64?: string | null } | UploadJob[]) => Promise<{ success: boolean; error?: string }>
+        start: (payload: { jobs: UploadJob[]; excelPath?: string | null; excelBase64?: string | null; perChannelLimit?: number } | UploadJob[]) => Promise<{ success: boolean; error?: string }>
         updateExcelBase64: (base64: string) => Promise<{ success: boolean }>
         cancel: () => Promise<{ success: boolean }>
         getStatus: () => Promise<{ isUploading: boolean; currentIndex: number; total: number }>

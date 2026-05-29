@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   history: {
     get: () => ipcRenderer.invoke('history:get'),
     clear: () => ipcRenderer.invoke('history:clear'),
+    getStats: () => ipcRenderer.invoke('history:get-stats'),
   },
 
   // Logs
@@ -105,6 +106,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onAutoStart: (callback: (data: any) => void) => {
       ipcRenderer.on('upload:auto-start', (_, data) => callback(data))
     },
+    onChannelLimitReached: (callback: (data: any) => void) => {
+      ipcRenderer.on('upload:channel-limit-reached', (_, data) => callback(data))
+    },
+    onChannelCountsUpdate: (callback: (data: any) => void) => {
+      ipcRenderer.on('upload:channel-counts-update', (_, data) => callback(data))
+    },
     removeAllListeners: () => {
       ipcRenderer.removeAllListeners('upload:job-start')
       ipcRenderer.removeAllListeners('upload:progress')
@@ -118,6 +125,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.removeAllListeners('upload:all-complete')
       ipcRenderer.removeAllListeners('upload:limit-exceeded')
       ipcRenderer.removeAllListeners('upload:auto-start')
+      ipcRenderer.removeAllListeners('upload:channel-limit-reached')
+      ipcRenderer.removeAllListeners('upload:channel-counts-update')
     },
   },
   // Quota

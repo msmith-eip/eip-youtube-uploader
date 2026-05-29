@@ -51,6 +51,8 @@ export default function UploadQueue() {
     uploadedAt: string
   } | null>(null)
   const [duplicateCountdown, setDuplicateCountdown] = useState<number>(30)
+  const [perChannelLimit, setPerChannelLimit] = useState<number>(0)
+  const [channelUploadCounts, setChannelUploadCounts] = useState<Record<string, number>>({})
   const fileInputRef = useRef<HTMLInputElement>(null)
   const dropZoneRef = useRef<HTMLDivElement>(null)
   // Refs so the IPC closure always has the latest Excel state
@@ -199,6 +201,16 @@ export default function UploadQueue() {
     ;(window.electronAPI.upload as any).onLimitExceeded?.(() => {
       setIsUploading(false)
       showToast('error', 'YouTube channel upload limit reached -- uploads stopped. The limit resets at midnight Pacific Time.')
+    })
+
+    // Per-channel limit reached
+    ;(window.electronAPI.upload as any).onChannelLimitReached?.((data: any) => {
+      setIsUploading(false)
+      showToast('error', `Upload limit of ${data.limit} reached for ${data.channelName || data.channelId} — queue stopped. ${data.uploaded} videos uploaded this run.`)
+    })
+    // Per-channel upload count updates
+    ;(window.electronAPI.upload as any).onChannelCountsUpdate?.((data: any) => {
+      setChannelUploadCounts(data.channelUploadCounts || {})
     })
 
     // 3:05 AM auto-start: main process sends this event when the scheduled queue begins
@@ -547,6 +559,7 @@ export default function UploadQueue() {
     if (pendingJobs.length === 0) return
 
     setIsUploading(true)
+    setChannelUploadCounts({})  // reset per-channel counts for new run
     if (window.electronAPI) {
       // ── Pre-upload: Build channel master list BEFORE uploading ──────────────────
       // Fetch all existing videos for each unique channel and write to Channel Videos sheet
@@ -588,6 +601,7 @@ export default function UploadQueue() {
         jobs: pendingJobs,
         excelPath: excelFilePathRef.current || null,
         excelBase64: excelBase64Ref.current || null,
+        perChannelLimit: perChannelLimit > 0 ? perChannelLimit : 0,
       })
       // Persist queue to disk so the 3:05 AM auto-start scheduler can resume it
       ;(window.electronAPI.upload as any).savePendingQueue?.({
@@ -706,7 +720,13 @@ export default function UploadQueue() {
   }
 
   const overallProgress = stats.total > 0
-    ? Math.round(((stats.complete + stats.uploading * 0.5) / stats.total) * 100)
+    ? Math.round(
+        uploadJobs.reduce((sum, job) => {
+          if (job.status === 'complete') return sum + 100
+          if (job.status === 'uploading' || job.status === 'syncing') return sum + (job.progress ?? 0)
+          return sum
+        }, 0) / stats.total
+      )
     : 0
 
   const toastColors = {
@@ -943,6 +963,22 @@ export default function UploadQueue() {
               Download Template
             </button>
 
+            {/* Per-channel upload limit */}
+            {!isUploading && (
+              <div className="flex items-center gap-1.5">
+                <label className="text-xs text-dark-400 whitespace-nowrap">Limit per channel:</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={perChannelLimit === 0 ? '' : perChannelLimit}
+                  onChange={e => setPerChannelLimit(e.target.value === '' ? 0 : Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                  placeholder="No limit"
+                  className="w-20 px-2 py-1 text-xs rounded bg-dark-700 border border-dark-600 text-dark-100 focus:outline-none focus:border-brand-500"
+                />
+              </div>
+            )}
+
             {/* Cancel / Start */}
             {isUploading ? (
               <button onClick={handleCancelUpload} className="btn-danger text-xs py-1.5">
@@ -956,7 +992,9 @@ export default function UploadQueue() {
                 className="btn-primary text-xs py-1.5 disabled:opacity-40"
               >
                 <Play size={14} />
-                Start Upload ({stats.pending})
+                {perChannelLimit > 0
+                  ? `Start Upload (max ${perChannelLimit}/channel)`
+                  : `Start Upload (${stats.pending})`}
               </button>
             )}
           </div>
@@ -979,6 +1017,27 @@ export default function UploadQueue() {
                 transition={{ duration: 0.5 }}
               />
             </div>
+            {/* Per-channel upload count badges */}
+            {Object.keys(channelUploadCounts).length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {Object.entries(channelUploadCounts).map(([chKey, count]) => {
+                  const channelName = uploadJobs.find(j => (j.channelId || j.channelName) === chKey)?.channelName || chKey
+                  const limitHit = perChannelLimit > 0 && count >= perChannelLimit
+                  return (
+                    <span
+                      key={chKey}
+                      className={`text-xs px-2 py-0.5 rounded-full border ${
+                        limitHit
+                          ? 'bg-accent-red/10 border-accent-red/30 text-accent-red'
+                          : 'bg-brand-500/10 border-brand-500/30 text-brand-400'
+                      }`}
+                    >
+                      {channelName}: {count}{perChannelLimit > 0 ? ` / ${perChannelLimit}` : ''} uploaded
+                    </span>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )}
 

@@ -14,6 +14,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const { auth, channels, uploadJobs, isUploading, refreshChannels } = useApp()
   const [history, setHistory] = useState<UploadHistory[]>([])
+  const [historyStats, setHistoryStats] = useState<{ totalUploadsAllTime: number; todayByChannel: Record<string, number> } | null>(null)
   const [loadingHistory, setLoadingHistory] = useState(false)
   const [exportingVideos, setExportingVideos] = useState(false)
   const [exportStatus, setExportStatus] = useState<string>('')
@@ -36,8 +37,12 @@ export default function Dashboard() {
     setLoadingHistory(true)
     try {
       if (window.electronAPI) {
-        const h = await window.electronAPI.history.get()
+        const [h, stats] = await Promise.all([
+          window.electronAPI.history.get(),
+          (window.electronAPI.history as any).getStats?.() || null,
+        ])
         setHistory(h || [])
+        if (stats) setHistoryStats(stats)
       }
     } finally {
       setLoadingHistory(false)
@@ -127,12 +132,14 @@ export default function Dashboard() {
     }
   }
 
-  const totalUploaded = history.length
-  const todayUploaded = history.filter(h => {
-    const d = new Date(h.uploadedAt)
-    const today = new Date()
-    return d.toDateString() === today.toDateString()
-  }).length
+  const totalUploaded = historyStats?.totalUploadsAllTime ?? history.length
+  const todayUploaded = historyStats
+    ? Object.values(historyStats.todayByChannel).reduce((a, b) => a + b, 0)
+    : history.filter(h => {
+        const d = new Date(h.uploadedAt)
+        const today = new Date()
+        return d.toDateString() === today.toDateString()
+      }).length
 
   const pendingJobs = uploadJobs.filter(j => j.status === 'pending').length
 
@@ -224,6 +231,17 @@ export default function Dashboard() {
             </div>
             <div className="text-2xl font-bold text-white mb-0.5 tabular-nums">{value}</div>
             <div className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#7491c4' }}>{label}</div>
+            {/* Per-channel today breakdown under Uploaded Today card */}
+            {label === 'Uploaded Today' && historyStats && Object.keys(historyStats.todayByChannel).length > 0 && (
+              <div className="mt-2 flex flex-col gap-0.5">
+                {Object.entries(historyStats.todayByChannel).map(([ch, count]) => (
+                  <div key={ch} className="flex items-center justify-between text-xs">
+                    <span className="text-dark-400 truncate max-w-[120px]" title={ch}>{ch}</span>
+                    <span className="text-dark-300 font-medium tabular-nums">{count} / 100</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </motion.div>
         ))}
       </motion.div>
