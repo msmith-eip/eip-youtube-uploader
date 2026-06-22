@@ -259,7 +259,7 @@ function createWindow() {
       nodeIntegration: false,
     },
     show: false,
-    icon: path.join(__dirname, '../public/icon.png'),
+    icon: path.join(__dirname, '../public/icon.ico'),
   })
 
   if (isDev) {
@@ -1949,6 +1949,207 @@ ipcMain.handle('duplicates:scan-missing-disclosure', async (_event, opts: { chan
   } catch (err: any) {
     const msg = err.message || String(err)
     addLog('error', 'Duplicates', `Disclosure scan failed: ${msg}`)
+    return { success: false, error: msg }
+  }
+})
+
+// ─── IPC: Video Manager ───────────────────────────────────────────────────────
+
+// Search videos on a specific channel by title substring
+ipcMain.handle('videoManager:search', async (_event, { channelId, query }: { channelId: string; query: string }) => {
+  try {
+    const youtube = getYouTubeClient()
+    if (!youtube) return { success: false, error: 'Not authenticated' }
+
+    const results: any[] = []
+    let pageToken: string | undefined
+    const q = (query || '').toLowerCase().trim()
+
+    do {
+      const res: any = await youtube.search.list({
+        part: ['snippet'],
+        channelId,
+        type: ['video'],
+        maxResults: 50,
+        pageToken,
+        ...(q ? { q } : {}),
+      } as any)
+      addQuota(QUOTA_COSTS.VIDEOS_LIST, `videoManager search page`)
+      for (const item of (res.data.items || [])) {
+        const title: string = item.snippet?.title || ''
+        if (!q || title.toLowerCase().includes(q)) {
+          results.push({
+            videoId: item.id?.videoId,
+            title,
+            channelId: item.snippet?.channelId,
+            channelTitle: item.snippet?.channelTitle,
+            publishedAt: item.snippet?.publishedAt,
+            thumbnailUrl: item.snippet?.thumbnails?.default?.url || '',
+          })
+        }
+      }
+      pageToken = res.data.nextPageToken
+    } while (pageToken)
+
+    addLog('info', 'VideoManager', `Search "${query}" on channel ${channelId} — ${results.length} results`)
+    return { success: true, videos: results }
+  } catch (err: any) {
+    const msg = err.message || String(err)
+    addLog('error', 'VideoManager', `Search failed: ${msg}`)
+    return { success: false, error: msg }
+  }
+})
+
+// Batch rename: update title on YouTube + update local history
+ipcMain.handle('videoManager:batch-rename', async (event, {
+  videoIds,
+  mode,
+  prepend,
+  append,
+  findText,
+  replaceText,
+  insertAfter,
+  insertText,
+}: {
+  videoIds: string[]
+  mode: 'prepend' | 'append' | 'find-replace' | 'insert-after' | 'uppercase' | 'lowercase'
+  prepend?: string
+  append?: string
+  findText?: string
+  replaceText?: string
+  insertAfter?: string
+  insertText?: string
+}) => {
+  try {
+    const youtube = getYouTubeClient()
+    if (!youtube) return { success: false, error: 'Not authenticated' }
+
+    const results: { videoId: string; oldTitle: string; newTitle: string; success: boolean; error?: string }[] = []
+
+    // Fetch current titles in batches of 50
+    const titleMap: Record<string, string> = {}
+    for (let i = 0; i < videoIds.length; i += 50) {
+      const batch = videoIds.slice(i, i + 50)
+      const res: any = await youtube.videos.list({ part: ['snippet'], id: batch } as any)
+      addQuota(QUOTA_COSTS.VIDEOS_LIST, `videoManager batch-rename fetch titles`)
+      for (const v of (res.data.items || [])) {
+        titleMap[v.id!] = v.snippet?.title || ''
+      }
+    }
+
+    // Apply rename and update each video
+    for (const videoId of videoIds) {
+      const oldTitle = titleMap[videoId] || ''
+      let newTitle = oldTitle
+
+      if (mode === 'prepend' && prepend) {
+        newTitle = prepend + oldTitle
+      } else if (mode === 'append' && append) {
+        newTitle = oldTitle + append
+      } else if (mode === 'find-replace' && findText !== undefined) {
+        newTitle = oldTitle.split(findText).join(replaceText || '')
+      } else if (mode === 'insert-after' && insertAfter && insertText) {
+        const idx = oldTitle.indexOf(insertAfter)
+        if (idx !== -1) {
+          newTitle = oldTitle.slice(0, idx + insertAfter.length) + insertText + oldTitle.slice(idx + insertAfter.length)
+        }
+      } else if (mode === 'uppercase') {
+        newTitle = oldTitle.toUpperCase()
+      } else if (mode === 'lowercase') {
+        newTitle = oldTitle.toLowerCase()
+      }
+
+      if (newTitle === oldTitle) {
+        results.push({ videoId, oldTitle, newTitle, success: true })
+        continue
+      }
+
+      try {
+        // Fetch full snippet first (categoryId is required for update)
+        const snippetRes: any = await youtube.videos.list({ part: ['snippet'], id: [videoId] } as any)
+        addQuota(QUOTA_COSTS.VIDEOS_LIST, `videoManager fetch snippet for update`)
+        const snippet = snippetRes.data.items?.[0]?.snippet
+        if (!snippet) throw new Error('Video not found')
+
+        await (youtube.videos as any).update({
+          part: ['snippet'],
+          requestBody: {
+            id: videoId,
+            snippet: { ...snippet, title: newTitle },
+          },
+        })
+        addQuota(QUOTA_COSTS.VIDEOS_UPDATE, `videoManager rename "${oldTitle}" → "${newTitle}"`)
+
+        // Update local history
+        const history = (store.get('uploadHistory') as any[]) || []
+        let changed = false
+        for (const h of history) {
+          if (h.youtubeUrl?.includes(videoId) || h.videoId === videoId) {
+            h.title = newTitle
+            changed = true
+          }
+        }
+        if (changed) store.set('uploadHistory', history)
+
+        // Stream progress
+        event.sender.send('videoManager:rename-progress', { videoId, oldTitle, newTitle, done: results.length + 1, total: videoIds.length })
+        results.push({ videoId, oldTitle, newTitle, success: true })
+        addLog('info', 'VideoManager', `Renamed: "${oldTitle}" → "${newTitle}"`)
+      } catch (err: any) {
+        const msg = err.message || String(err)
+        results.push({ videoId, oldTitle, newTitle, success: false, error: msg })
+        addLog('error', 'VideoManager', `Rename failed for ${videoId}: ${msg}`)
+      }
+
+      await new Promise(r => setTimeout(r, 200))
+    }
+
+    return { success: true, results }
+  } catch (err: any) {
+    const msg = err.message || String(err)
+    addLog('error', 'VideoManager', `Batch rename failed: ${msg}`)
+    return { success: false, error: msg }
+  }
+})
+
+// Bulk delete videos (with progress streaming)
+ipcMain.handle('videoManager:delete-videos', async (event, { videoIds }: { videoIds: string[] }) => {
+  try {
+    const youtube = getYouTubeClient()
+    if (!youtube) return { success: false, error: 'Not authenticated' }
+
+    const results: { videoId: string; success: boolean; error?: string }[] = []
+
+    for (let i = 0; i < videoIds.length; i++) {
+      const videoId = videoIds[i]
+      try {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 15000)
+        await (youtube.videos as any).delete({ id: videoId })
+        clearTimeout(timeout)
+        addQuota(QUOTA_COSTS.VIDEOS_DELETE, `videoManager delete ${videoId}`)
+
+        // Remove from local history
+        const history = (store.get('uploadHistory') as any[]) || []
+        const filtered = history.filter((h: any) => !h.youtubeUrl?.includes(videoId) && h.videoId !== videoId)
+        if (filtered.length !== history.length) store.set('uploadHistory', filtered)
+
+        results.push({ videoId, success: true })
+        addLog('info', 'VideoManager', `Deleted video ${videoId}`)
+      } catch (err: any) {
+        const msg = err.message || String(err)
+        results.push({ videoId, success: false, error: msg })
+        addLog('error', 'VideoManager', `Delete failed for ${videoId}: ${msg}`)
+      }
+
+      event.sender.send('videoManager:delete-progress', { done: i + 1, total: videoIds.length, videoId })
+      await new Promise(r => setTimeout(r, 300))
+    }
+
+    return { success: true, results }
+  } catch (err: any) {
+    const msg = err.message || String(err)
+    addLog('error', 'VideoManager', `Bulk delete failed: ${msg}`)
     return { success: false, error: msg }
   }
 })

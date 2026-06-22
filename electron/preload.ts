@@ -155,6 +155,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
   },
 
+  // Video Manager
+  videoManager: {
+    search: (opts: { channelId: string; query: string }) => ipcRenderer.invoke('videoManager:search', opts),
+    batchRename: (opts: any) => ipcRenderer.invoke('videoManager:batch-rename', opts),
+    deleteVideos: (opts: { videoIds: string[] }) => ipcRenderer.invoke('videoManager:delete-videos', opts),
+    onRenameProgress: (callback: (data: any) => void) => {
+      ipcRenderer.on('videoManager:rename-progress', (_, data) => callback(data))
+    },
+    onDeleteProgress: (callback: (data: any) => void) => {
+      ipcRenderer.on('videoManager:delete-progress', (_, data) => callback(data))
+    },
+    removeListeners: () => {
+      ipcRenderer.removeAllListeners('videoManager:rename-progress')
+      ipcRenderer.removeAllListeners('videoManager:delete-progress')
+    },
+  },
+
   // Auto Updater
   updater: {
     check: () => ipcRenderer.invoke('updater:check'),

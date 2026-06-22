@@ -3,8 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Upload, History, Settings, LogOut,
-  Video, ChevronRight, Wifi, Terminal,
-  Download, RefreshCw, Sparkles, X, ArrowDownToLine, Gauge, Shield, Copy
+  Video, ChevronRight, Wifi, Terminal, Film,
+  Download, RefreshCw, Sparkles, X, ArrowDownToLine, Gauge, Copy
 } from 'lucide-react'
 import { useApp } from '../App'
 
@@ -17,6 +17,7 @@ const navItems = [
   { path: '/upload',      icon: Upload,          label: 'Upload Queue' },
   { path: '/history',     icon: History,         label: 'Upload History' },
   { path: '/duplicates',  icon: Copy,            label: 'Duplicate Manager' },
+  { path: '/videos',      icon: Film,            label: 'Video Manager' },
   { path: '/logs',        icon: Terminal,        label: 'Activity Logs' },
   { path: '/settings',    icon: Settings,        label: 'Settings' },
 ]
@@ -114,10 +115,7 @@ export default function Layout({ children }: LayoutProps) {
         <div className="titlebar-drag h-12 flex items-center px-4 flex-shrink-0"
              style={{ background: '#030d2b', borderBottom: '1px solid rgba(45,90,158,0.35)' }}>
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                 style={{ background: 'linear-gradient(135deg, #B22234, #e11d48)', boxShadow: '0 0 12px rgba(178,34,52,0.4)' }}>
-              <Shield size={15} className="text-white" />
-            </div>
+            <img src="./app-icon.png" alt="EIP" className="w-8 h-8 rounded-lg flex-shrink-0" style={{ objectFit: 'cover' }} />
             <div>
               <div className="text-sm font-bold text-white leading-tight tracking-wide">EIP Uploader</div>
               <div className="text-[10px] leading-tight" style={{ color: 'rgba(255,255,255,0.45)' }}>Bulk Video Upload</div>

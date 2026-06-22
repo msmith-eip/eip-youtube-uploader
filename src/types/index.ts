@@ -154,6 +154,23 @@ declare global {
         fixDisclosure: (videoIds: string[]) => Promise<{ success: boolean; results?: { videoId: string; success: boolean; error?: string }[]; error?: string }>
         scanMissingDisclosure: (opts?: { channelIds?: string[] }) => Promise<{ success: boolean; videos?: DuplicateVideoEntry[]; totalScanned?: number; error?: string }>
       }
+      videoManager: {
+        search: (opts: { channelId: string; query: string }) => Promise<{ success: boolean; videos?: DuplicateVideoEntry[]; error?: string }>
+        batchRename: (opts: {
+          videoIds: string[]
+          mode: 'prepend' | 'append' | 'find-replace' | 'insert-after' | 'uppercase' | 'lowercase'
+          prepend?: string
+          append?: string
+          findText?: string
+          replaceText?: string
+          insertAfter?: string
+          insertText?: string
+        }) => Promise<{ success: boolean; results?: { videoId: string; oldTitle: string; newTitle: string; success: boolean; error?: string }[]; error?: string }>
+        deleteVideos: (opts: { videoIds: string[] }) => Promise<{ success: boolean; results?: { videoId: string; success: boolean; error?: string }[]; error?: string }>
+        onRenameProgress: (callback: (data: { videoId: string; oldTitle: string; newTitle: string; done: number; total: number }) => void) => void
+        onDeleteProgress: (callback: (data: { done: number; total: number; videoId: string }) => void) => void
+        removeListeners: () => void
+      }
       updater: {
         check: () => Promise<any>
         download: () => Promise<any>

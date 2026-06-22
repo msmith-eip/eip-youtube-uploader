@@ -9,6 +9,7 @@ import Settings from './pages/Settings'
 import Logs from './pages/Logs'
 import AuthScreen from './pages/AuthScreen'
 import DuplicateManager from './pages/DuplicateManager'
+import VideoManager from './pages/VideoManager'
 import type { AuthStatus, AppSettings, Channel, UploadJob } from './types'
 
 // ─── App Context ──────────────────────────────────────────────────────────────
@@ -198,6 +199,7 @@ export default function App() {
                 <Route path="/upload" element={<UploadQueue />} />
                 <Route path="/history" element={<History />} />
                 <Route path="/duplicates" element={<DuplicateManager />} />
+                <Route path="/videos" element={<VideoManager />} />
                 <Route path="/logs" element={<Logs />} />
                 <Route path="/settings" element={<Settings />} />
               </Routes>
