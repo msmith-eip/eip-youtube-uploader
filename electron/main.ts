@@ -1958,8 +1958,8 @@ ipcMain.handle('duplicates:scan-missing-disclosure', async (_event, opts: { chan
 // Search videos on a specific channel by title substring
 ipcMain.handle('videoManager:search', async (_event, { channelId, query }: { channelId: string; query: string }) => {
   try {
-    const youtube = getYouTubeClient()
-    if (!youtube) return { success: false, error: 'Not authenticated' }
+    if (!oauth2Client.credentials?.access_token) return { success: false, error: 'Not authenticated' }
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
 
     const results: any[] = []
     let pageToken: string | undefined
@@ -2021,8 +2021,8 @@ ipcMain.handle('videoManager:batch-rename', async (event, {
   insertText?: string
 }) => {
   try {
-    const youtube = getYouTubeClient()
-    if (!youtube) return { success: false, error: 'Not authenticated' }
+    if (!oauth2Client.credentials?.access_token) return { success: false, error: 'Not authenticated' }
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
 
     const results: { videoId: string; oldTitle: string; newTitle: string; success: boolean; error?: string }[] = []
 
@@ -2115,8 +2115,8 @@ ipcMain.handle('videoManager:batch-rename', async (event, {
 // Bulk delete videos (with progress streaming)
 ipcMain.handle('videoManager:delete-videos', async (event, { videoIds }: { videoIds: string[] }) => {
   try {
-    const youtube = getYouTubeClient()
-    if (!youtube) return { success: false, error: 'Not authenticated' }
+    if (!oauth2Client.credentials?.access_token) return { success: false, error: 'Not authenticated' }
+    const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
 
     const results: { videoId: string; success: boolean; error?: string }[] = []
 
