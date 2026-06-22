@@ -1956,42 +1956,61 @@ ipcMain.handle('duplicates:scan-missing-disclosure', async (_event, opts: { chan
 // ─── IPC: Video Manager ───────────────────────────────────────────────────────
 
 // Search videos on a specific channel by title substring
+// Uses playlistItems.list (1 quota unit/call) via the channel's uploads playlist
+// for reliable full-channel enumeration, then filters by query client-side.
 ipcMain.handle('videoManager:search', async (_event, { channelId, query }: { channelId: string; query: string }) => {
   try {
     if (!oauth2Client.credentials?.access_token) return { success: false, error: 'Not authenticated' }
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
-
-    const results: any[] = []
-    let pageToken: string | undefined
     const q = (query || '').toLowerCase().trim()
 
+    // Step 1: Get the uploads playlist ID for this channel
+    const chResp: any = await youtube.channels.list({
+      part: ['contentDetails', 'snippet'],
+      id: [channelId],
+      maxResults: 1,
+    } as any)
+    addQuota(QUOTA_COSTS.CHANNELS_LIST, 'videoManager channels.list')
+    const chItem = (chResp.data.items || [])[0]
+    if (!chItem) return { success: false, error: 'Channel not found' }
+    const uploadsPlaylistId: string = chItem.contentDetails?.relatedPlaylists?.uploads
+    const channelTitle: string = chItem.snippet?.title || channelId
+    if (!uploadsPlaylistId) return { success: false, error: 'Could not find uploads playlist for this channel' }
+
+    // Step 2: Page through the uploads playlist
+    const results: any[] = []
+    let pageToken: string | undefined = undefined
+    let pageCount = 0
+
     do {
-      const res: any = await youtube.search.list({
-        part: ['snippet'],
-        channelId,
-        type: ['video'],
+      const plResp: any = await youtube.playlistItems.list({
+        part: ['snippet', 'contentDetails'],
+        playlistId: uploadsPlaylistId,
         maxResults: 50,
-        pageToken,
-        ...(q ? { q } : {}),
+        pageToken: pageToken || undefined,
       } as any)
-      addQuota(QUOTA_COSTS.VIDEOS_LIST, `videoManager search page`)
-      for (const item of (res.data.items || [])) {
+      addQuota(QUOTA_COSTS.PLAYLIST_ITEMS_LIST, `videoManager playlistItems page ${pageCount + 1}`)
+      for (const item of (plResp.data.items || [])) {
+        const videoId: string = item.contentDetails?.videoId || ''
+        if (!videoId) continue
         const title: string = item.snippet?.title || ''
-        if (!q || title.toLowerCase().includes(q)) {
-          results.push({
-            videoId: item.id?.videoId,
-            title,
-            channelId: item.snippet?.channelId,
-            channelTitle: item.snippet?.channelTitle,
-            publishedAt: item.snippet?.publishedAt,
-            thumbnailUrl: item.snippet?.thumbnails?.default?.url || '',
-          })
-        }
+        if (q && !title.toLowerCase().includes(q)) continue
+        results.push({
+          videoId,
+          title,
+          channelId,
+          channelTitle,
+          publishedAt: item.snippet?.publishedAt || item.snippet?.videoPublishedAt || '',
+          thumbnailUrl: item.snippet?.thumbnails?.medium?.url ||
+                        item.snippet?.thumbnails?.default?.url || '',
+        })
       }
-      pageToken = res.data.nextPageToken
+      pageToken = plResp.data.nextPageToken || undefined
+      pageCount++
+      if (pageCount >= 200) break // safety cap: 10,000 videos
     } while (pageToken)
 
-    addLog('info', 'VideoManager', `Search "${query}" on channel ${channelId} — ${results.length} results`)
+    addLog('info', 'VideoManager', `Search "${query}" on ${channelTitle} — ${results.length} results`)
     return { success: true, videos: results }
   } catch (err: any) {
     const msg = err.message || String(err)
