@@ -1960,27 +1960,42 @@ ipcMain.handle('duplicates:scan-missing-disclosure', async (_event, opts: { chan
 // for reliable full-channel enumeration, then filters by query client-side.
 ipcMain.handle('videoManager:search', async (_event, { channelId, query }: { channelId: string; query: string }) => {
   try {
-    if (!oauth2Client.credentials?.access_token) return { success: false, error: 'Not authenticated' }
+    if (!oauth2Client.credentials?.access_token) {
+      addLog('error', 'VideoManager', 'Search aborted: not authenticated (no access token)')
+      return { success: false, error: 'Not authenticated' }
+    }
     const youtube = google.youtube({ version: 'v3', auth: oauth2Client })
     const q = (query || '').toLowerCase().trim()
+    addLog('info', 'VideoManager', `Search started — channelId: "${channelId}" query: "${query || '(all)'}"`)
 
     // Step 1: Get the uploads playlist ID for this channel
+    addLog('info', 'VideoManager', `Fetching channel info for id: ${channelId}`)
     const chResp: any = await youtube.channels.list({
       part: ['contentDetails', 'snippet'],
       id: [channelId],
       maxResults: 1,
     } as any)
     addQuota(QUOTA_COSTS.CHANNELS_LIST, 'videoManager channels.list')
-    const chItem = (chResp.data.items || [])[0]
-    if (!chItem) return { success: false, error: 'Channel not found' }
-    const uploadsPlaylistId: string = chItem.contentDetails?.relatedPlaylists?.uploads
+    const chItems = chResp.data.items || []
+    addLog('info', 'VideoManager', `channels.list returned ${chItems.length} item(s). HTTP status: ${chResp.status}`)
+    const chItem = chItems[0]
+    if (!chItem) {
+      addLog('error', 'VideoManager', `Channel not found for id: "${channelId}". This may mean the channelId is wrong or the token lacks channel access.`)
+      return { success: false, error: `Channel not found for id: ${channelId}` }
+    }
+    const uploadsPlaylistId: string = chItem.contentDetails?.relatedPlaylists?.uploads || ''
     const channelTitle: string = chItem.snippet?.title || channelId
-    if (!uploadsPlaylistId) return { success: false, error: 'Could not find uploads playlist for this channel' }
+    addLog('info', 'VideoManager', `Channel: "${channelTitle}" | uploadsPlaylistId: "${uploadsPlaylistId}"`)
+    if (!uploadsPlaylistId) {
+      addLog('error', 'VideoManager', 'Could not find uploads playlist — contentDetails.relatedPlaylists.uploads is empty')
+      return { success: false, error: 'Could not find uploads playlist for this channel' }
+    }
 
     // Step 2: Page through the uploads playlist
     const results: any[] = []
     let pageToken: string | undefined = undefined
     let pageCount = 0
+    let totalItems = 0
 
     do {
       const plResp: any = await youtube.playlistItems.list({
@@ -1990,7 +2005,10 @@ ipcMain.handle('videoManager:search', async (_event, { channelId, query }: { cha
         pageToken: pageToken || undefined,
       } as any)
       addQuota(QUOTA_COSTS.PLAYLIST_ITEMS_LIST, `videoManager playlistItems page ${pageCount + 1}`)
-      for (const item of (plResp.data.items || [])) {
+      const items = plResp.data.items || []
+      totalItems += items.length
+      addLog('info', 'VideoManager', `Page ${pageCount + 1}: ${items.length} items (${totalItems} total so far)`)
+      for (const item of items) {
         const videoId: string = item.contentDetails?.videoId || ''
         if (!videoId) continue
         const title: string = item.snippet?.title || ''
@@ -2007,14 +2025,17 @@ ipcMain.handle('videoManager:search', async (_event, { channelId, query }: { cha
       }
       pageToken = plResp.data.nextPageToken || undefined
       pageCount++
-      if (pageCount >= 200) break // safety cap: 10,000 videos
+      if (pageCount >= 200) {
+        addLog('warn', 'VideoManager', 'Hit 200-page safety cap (10,000 videos) — stopping pagination')
+        break
+      }
     } while (pageToken)
 
-    addLog('info', 'VideoManager', `Search "${query}" on ${channelTitle} — ${results.length} results`)
+    addLog('success', 'VideoManager', `Search complete — ${totalItems} total items scanned, ${results.length} matched query "${query || '(all)'}" on ${channelTitle}`)
     return { success: true, videos: results }
   } catch (err: any) {
     const msg = err.message || String(err)
-    addLog('error', 'VideoManager', `Search failed: ${msg}`)
+    addLog('error', 'VideoManager', `Search failed with exception: ${msg}`)
     return { success: false, error: msg }
   }
 })
